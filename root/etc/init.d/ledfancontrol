@@ -6,9 +6,9 @@
 # Service wrapper for the generic sysfs backend of luci-app-ledfancontrol.
 #
 # The actual work is in /usr/libexec/ledfancontrol-daemon; this file only tells
-# procd to keep it running. It exists so that the LuCI page can reload the
-# backend over ubus (rc.init) exactly as it does for the vendor's factory-pwm,
-# and so that the daemon survives a crash.
+# procd to keep it running, and registers the reload trigger that makes a
+# commit of the configuration restart it - which is how the LuCI page's
+# Save & Apply reaches the daemon. It also lets the daemon survive a crash.
 
 START=21
 STOP=89

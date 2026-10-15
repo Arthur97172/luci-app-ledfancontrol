@@ -1,7 +1,6 @@
 'use strict';
 'require view';
 'require form';
-'require rpc';
 'require uci';
 'require ui';
 'require ledfancontrol.backend as backend';
@@ -14,7 +13,7 @@
  * LED, hwmon and thermal classes. This view only does three things:
  *
  *   - edit the UCI configuration that backend reads,
- *   - reload its init script, so a change takes effect without a reboot,
+ *   - commit it, which restarts the backend through its procd reload trigger,
  *   - render the status document the backend publishes, as a live status box.
  *
  * Which backend, which config, which options exist at all, which effect
@@ -29,21 +28,6 @@
  */
 
 var STATUS_INTERVAL = 3;
-
-/*
- * Reload the backend's init script through ubus, so that the daemon picks up
- * the committed configuration immediately.
- *
- * The matching ACL grant is  write > ubus > rc > [ "init" ], in
- * root/usr/share/rpcd/acl.d/luci-app-ledfancontrol.json. The backend probe and
- * the status document need no file grant of their own: both arrive through the
- * ledfancontrol ubus object, which is granted next to this one.
- */
-var callRcInit = rpc.declare({
-	object: 'rc',
-	method: 'init',
-	params: [ 'name', 'action' ]
-});
 
 /*
  * Escape a string for interpolation into innerHTML.
@@ -286,6 +270,21 @@ return view.extend({
 					if (e.colour)
 						o.depends({ led_mode: 'manual', led_effect: e.value });
 				});
+
+				/*
+				 * Retain the stored colour while the option is hidden.
+				 *
+				 * CBI deletes the value of every option whose depends() is
+				 * unsatisfied unless `retain` is set - form.js sends an
+				 * inactive option straight to remove(). That is the wrong
+				 * answer for a colour twice over: the user's choice would be
+				 * silently dropped the moment they picked an effect that takes
+				 * no colour, and the save after that would ask rpcd to delete
+				 * an option that is no longer in the configuration, which it
+				 * answers with UBUS_STATUS_NOT_FOUND - the "未找到资源" this
+				 * page used to report.
+				 */
+				o.retain = true;
 			}
 
 			o = s.option(form.ListValue, 'led_effect', _('Manual effect'));
@@ -294,6 +293,9 @@ return view.extend({
 			});
 			o.default = desc.effects.length ? desc.effects[0].value : null;
 			o.depends('led_mode', 'manual');
+
+			/* Retained while the LED is not in manual mode - see above. */
+			o.retain = true;
 
 			o = s.option(form.ListValue, 'brightness', _('Brightness'));
 			for (v = desc.brightness.min; v <= desc.brightness.max; v += desc.brightness.step)
@@ -372,6 +374,9 @@ return view.extend({
 				: desc.fan.steps.min[0]);
 			o.depends('fan_mode', 'auto');
 
+			/* Retained while the fan is not in automatic mode - see above. */
+			o.retain = true;
+
 			o = s.option(form.ListValue, desc.fan.manualKey, _('Manual target speed'));
 			speeds('manual').forEach(function(val) {
 				o.value(val, val + ' ' + desc.fan.unit);
@@ -380,6 +385,9 @@ return view.extend({
 				? desc.fan.defaultManual
 				: desc.fan.steps.manual[2]);
 			o.depends('fan_mode', 'manual');
+
+			/* Retained while the fan is not in manual mode - see above. */
+			o.retain = true;
 
 			/*
 			 * The remaining numeric knobs, whatever they are. The descriptor
@@ -397,6 +405,9 @@ return view.extend({
 				o.default = String(f.default);
 				o.rmempty = false;
 				o.depends('fan_mode', 'auto');
+
+				/* Retained while the fan is not in automatic mode - see above. */
+				o.retain = true;
 			});
 		}
 
@@ -413,45 +424,51 @@ return view.extend({
 		});
 	},
 
+	/*
+	 * Save the form, then hand the commit to ui.changes.apply() - the stock
+	 * path, and the same one line the base view in luci.js runs.
+	 *
+	 * Committing through uci.apply() over ubus instead - the obvious-looking
+	 * thing, and what this page used to do - fails here for two
+	 * independent reasons, and both of them are properties of the RPC rather
+	 * than of anything this page gets wrong.
+	 *
+	 * It commits the whole session changeset, not this page's share of it.
+	 * rpcd stages every config any open page has touched in one per-session
+	 * delta directory, and uci apply walks that directory and refuses the
+	 * call unless the session holds *write* ACL on every config in it
+	 * (rpc_uci_apply_access() in rpcd's uci.c). A config the session may read
+	 * but not write - wireless, left behind by another page in the same
+	 * browser session - is enough to turn the call into
+	 * UBUS_STATUS_PERMISSION_DENIED, which is the "没有权限" the button used
+	 * to report. ui.changes.apply() posts to the admin/uci endpoint instead,
+	 * which the LuCI dispatcher handles as root and where no per-config ubus
+	 * ACL applies.
+	 *
+	 * It is also the rollback flavour of the call. LuCI's uci.apply() sends
+	 * uci apply { rollback: true }, so rpcd snapshots the configuration and
+	 * arms a timer, and it refuses a second rollback apply while one is
+	 * pending (rpc_uci_apply()). Confirming is the caller's job, and the
+	 * confirm loop LuCI wraps around it never ran here because this page
+	 * reloaded itself as soon as the apply returned - so a second press
+	 * inside the rollback window was denied, and an unconfirmed first press
+	 * quietly reverted the configuration.
+	 *
+	 * ui.changes.apply() also reports "There are no changes to apply" rather
+	 * than failing when the changeset is empty, which is what pressing the
+	 * button without having edited anything produces, and it drives the
+	 * confirm step and the reload itself.
+	 *
+	 * Nothing reloads the backend here on purpose. Committing the
+	 * configuration runs reload_config, which fires the procd reload trigger
+	 * both init scripts declare - service_triggers() in
+	 * root/etc/init.d/ledfancontrol and in the vendor's factory-pwm - so the
+	 * daemon is restarted by the commit itself. A separate rc.init call would
+	 * only race the page reload the apply flow has already started.
+	 */
 	handleSaveApply: function(ev, mode) {
-		var det = this.det || { descriptor: backend.NONE, available: [] };
-		var desc = det.descriptor;
-
 		return this.handleSave(ev).then(function() {
-			/*
-			 * Commit the staged UCI change first, so that the init script
-			 * reloaded below already reads the new values.
-			 *
-			 * uci.apply() is the raw ubus RPC rather than the HTTP endpoint
-			 * the stock footer posts to, and it answers UBUS_STATUS_NO_DATA
-			 * when there is nothing staged to commit - which is exactly the
-			 * case when Save & Apply is pressed without changing anything.
-			 * The call is declared reject: true, so that status arrives as a
-			 * rejected promise and would be reported below as a bogus failure
-			 * of an operation that was really a no-op. Ask uci.changes() for
-			 * the staged changeset and commit only when it is non-empty.
-			 */
-			return uci.changes();
-		}).then(function(changes) {
-			var pending = 0;
-
-			for (var config in changes)
-				pending += changes[config].length;
-
-			return pending ? uci.apply() : null;
-		}).then(function() {
-			return callRcInit(desc.service, 'reload');
-		}).then(function() {
-			/*
-			 * Reload so the form shows the committed state. Deliberately no
-			 * success notification: the reload replaces the page a moment
-			 * later, so a toast would only flash past. The error branch below
-			 * keeps its notification, because on failure nothing reloads and
-			 * the user would otherwise see no sign that anything went wrong.
-			 */
-			window.location.reload();
-		}).catch(function(err) {
-			ui.addNotification(null, E('p', _('Failed to apply the settings: %s').format(err)), 'error');
+			ui.changes.apply(mode == '0');
 		});
 	}
 });

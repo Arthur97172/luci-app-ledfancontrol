@@ -32,8 +32,9 @@ The frontend **never touches the hardware**, and it does not read the
 filesystem either. It does three things:
 
 1. reads and writes the UCI configuration named by the descriptor;
-2. on *Save & Apply*, reloads the descriptor's init script over ubus
-   (`rc.init`), so a change takes effect without a reboot;
+2. on *Save & Apply*, commits it, which runs `reload_config` and so fires the
+   procd reload trigger each init script declares (`service_triggers`), making
+   the change take effect without a reboot;
 3. every 3 seconds calls `ledfancontrol.status` over ubus and renders the
    document that comes back.
 

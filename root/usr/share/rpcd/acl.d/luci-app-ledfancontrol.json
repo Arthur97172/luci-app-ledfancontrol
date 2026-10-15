@@ -3,15 +3,11 @@
 		"description": "Grant access to the LED and fan control configuration",
 		"read": {
 			"ubus": {
-				"ledfancontrol": [ "backends", "status", "capabilities" ],
-				"rc": [ "list" ]
+				"ledfancontrol": [ "backends", "status", "capabilities" ]
 			},
 			"uci": [ "factory_pwm", "ledfancontrol" ]
 		},
 		"write": {
-			"ubus": {
-				"rc": [ "init" ]
-			},
 			"uci": [ "factory_pwm", "ledfancontrol" ]
 		}
 	}
