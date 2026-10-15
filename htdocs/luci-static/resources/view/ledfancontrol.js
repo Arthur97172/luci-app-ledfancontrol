@@ -7,7 +7,7 @@
 'require ledfancontrol.backend as backend';
 
 /*
- * LuCI 2 view for "Led&fan Control" - the RGB status LED and the cooling fan.
+ * LuCI 2 view for "LED & Fan Control" - the RGB status LED and the cooling fan.
  *
  * Almost nothing happens here. The hardware is driven by a backend: either the
  * vendor's factory-pwm daemon, or the generic one that drives the kernel's own
@@ -168,7 +168,7 @@ function renderUnsupported(available) {
 	var found = (available && available.length) ? available.join('", "') : null;
 
 	return E('div', { 'class': 'cbi-map' }, [
-		E('h2', {}, _('Led&fan Control')),
+		E('h2', {}, _('LED & Fan Control')),
 		E('div', { 'class': 'cbi-section' }, [
 			E('p', {}, found
 				? _('This device has a "%s" backend, but this version of the page has no support for it.').format(found)
@@ -202,7 +202,7 @@ return view.extend({
 		if (!desc.config)
 			return renderUnsupported(det.available);
 
-		m = new form.Map(desc.config, _('Led&fan Control'),
+		m = new form.Map(desc.config, _('LED & Fan Control'),
 			_('Unified control of the RGB PWM lighting and of the fan thermal control. A change takes effect as soon as it is saved and applied.'));
 
 		/*

@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-A LuCI app for OpenWrt / ImmortalWrt, called **Led&fan Control** in English and
+A LuCI app for OpenWrt / ImmortalWrt, called **LED & Fan Control** in English and
 **灯光与风扇** in Simplified Chinese, that controls the **system RGB LED** and
 the **cooling fan** from a single page under the *System* menu.
 
@@ -298,6 +298,27 @@ name. A backend that grows a sensor therefore needs no change here.
 vendor backend has a tachometer and reports RPM; the generic one has none and
 reports the duty cycle it wrote. Rendering "0 RPM" for a backend that never
 claimed to know the speed would be worse than not showing a speed.
+
+## Installation
+
+Prebuilt packages are on the
+[Releases](https://github.com/Arthur97172/luci-app-ledfancontrol/releases) page.
+
+OpenWrt 24.10:
+
+```sh
+opkg install luci-app-ledfancontrol_*.ipk
+# the Chinese interface needs the translation package as well
+opkg install luci-i18n-ledfancontrol-zh-cn_*.ipk
+```
+
+OpenWrt 25.12:
+
+```sh
+apk add --allow-untrusted luci-app-ledfancontrol-*.apk
+# the Chinese interface needs the translation package as well
+apk add --allow-untrusted luci-i18n-ledfancontrol-zh-cn-*.apk
+```
 
 ## Building
 

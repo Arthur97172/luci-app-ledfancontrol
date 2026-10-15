@@ -208,7 +208,7 @@ msgstr "温度"
 #: htdocs/luci-static/resources/view/ledfancontrol.js:171
 #: htdocs/luci-static/resources/view/ledfancontrol.js:205
 #: root/usr/share/luci/menu.d/luci-app-ledfancontrol.json:3
-msgid "Led&fan Control"
+msgid "LED & Fan Control"
 msgstr "灯光与风扇"
 
 #: htdocs/luci-static/resources/view/ledfancontrol.js:174

@@ -203,7 +203,7 @@ jobs:
               同一份产物同时支持 ARM / x86 / MIPS 等所有平台
             - `luci-i18n-ledfancontrol-zh-cn`：中文翻译包，单独安装；不装则界面显示英文
 
-            安装后出现「系统 → Led&fan Control」。本包**不含**厂商的闭源
+            安装后出现「系统 → LED & Fan Control」。本包**不含**厂商的闭源
             `/usr/bin/factory-pwm`：它由设备原有固件提供，本包在检测到它时
             使用它，检测不到时改用内核自身的 LED / hwmon / thermal 接口。
           files: artifacts/*

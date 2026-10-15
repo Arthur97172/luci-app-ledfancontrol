@@ -3,7 +3,7 @@
 'require rpc';
 
 /*
- * Backend descriptors for "Led&fan Control".
+ * Backend descriptors for "LED & Fan Control".
  *
  * The view is not allowed to know anything about the hardware. Everything it
  * needs - which UCI config to edit, which init script to reload, which options

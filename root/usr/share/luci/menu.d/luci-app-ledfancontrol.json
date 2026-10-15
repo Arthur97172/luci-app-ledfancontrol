@@ -1,6 +1,6 @@
 {
 	"admin/system/ledfancontrol": {
-		"title": "Led&fan Control",
+		"title": "LED & Fan Control",
 		"order": 55,
 		"action": {
 			"type": "view",

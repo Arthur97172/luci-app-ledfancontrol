@@ -15,7 +15,7 @@ PKG_LICENSE:=GPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=Arthur97172 <Arthur97172@users.noreply.github.com>
 
-LUCI_TITLE:=LuCI app for the factory RGB LED and the cooling fan (Led&fan Control)
+LUCI_TITLE:=LuCI app for the factory RGB LED and the cooling fan (LED & Fan Control)
 LUCI_DEPENDS:=+luci-base
 LUCI_PKGARCH:=all
 LUCI_URL:=https://github.com/Arthur97172/luci-app-ledfancontrol
@@ -41,7 +41,7 @@ LUCI_MAINTAINER:=Arthur97172 <Arthur97172@users.noreply.github.com>
 #
 # English needs no file at all: LuCI's _() returns the msgid unchanged when no
 # translation matches, so the English strings in ledfancontrol.js are their own
-# translation. That is also where the package's English name, "Led&fan
+# translation. That is also where the package's English name, "LED & Fan
 # Control", comes from - it is the msgid translated to 灯光与风扇 here.
 # ---------------------------------------------------------------------------
 

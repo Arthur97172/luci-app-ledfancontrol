@@ -3,7 +3,7 @@
 **简体中文** | [English](README.en.md)
 
 一个用于 OpenWrt / ImmortalWrt 的 LuCI 应用，中文名**灯光与风扇**，英文名
-**Led&fan Control**，在「系统」菜单下统一控制**系统 RGB 指示灯**与**散热风扇**。
+**LED & Fan Control**，在「系统」菜单下统一控制**系统 RGB 指示灯**与**散热风扇**。
 
 * 基于 LuCI 2（客户端 JavaScript），不含传统的 Lua CBI 视图。
 * 界面为英文；简体中文由单独的 `luci-i18n-ledfancontrol-zh-cn` 语言包提供。
@@ -258,6 +258,26 @@ config fan 'fan'
 
 **风扇那一行也是按字段拼的。** 原厂后端有转速就显示转速，通用后端没有转速
 就显示占空比——给一个从不声称知道转速的后端渲染「0 RPM」，比不显示转速更糟。
+
+## 安装
+
+预编译包见 [Releases](https://github.com/Arthur97172/luci-app-ledfancontrol/releases)。
+
+OpenWrt 24.10：
+
+```sh
+opkg install luci-app-ledfancontrol_*.ipk
+# 中文界面需额外安装翻译包
+opkg install luci-i18n-ledfancontrol-zh-cn_*.ipk
+```
+
+OpenWrt 25.12：
+
+```sh
+apk add --allow-untrusted luci-app-ledfancontrol-*.apk
+# 中文界面需额外安装翻译包
+apk add --allow-untrusted luci-i18n-ledfancontrol-zh-cn-*.apk
+```
 
 ## 编译
 
