@@ -209,10 +209,28 @@ return view.extend({
 		 * The live status box is not a CBI section: it renders data the daemon
 		 * writes, not a configuration value, so it is built as plain DOM and
 		 * prepended to the rendered map below.
+		 *
+		 * The inner div carries cbi-map-descr, the class form.Map puts on the map
+		 * description - the sentence under the page title. That class is what
+		 * indents that sentence, and a bare div inside a cbi-section inherits
+		 * none of it: the theme pads the section's heading and its content
+		 * separately, and only the heading is padded, so the status lines used to
+		 * sit hard against the left edge while the description above them was
+		 * inset.
+		 *
+		 * cbi-section-descr is the native class for a description *inside* a
+		 * section and looks like the more obvious choice, but themes do not give
+		 * it the same inset as the map description - in Argon it is 1rem against
+		 * the description's 1.25rem - so the lines would stay visibly out of line
+		 * with the sentence they are compared against. Borrowing the map
+		 * description's class aligns the two by construction, in any theme,
+		 * rather than by a number that would have to be kept in step with each
+		 * theme's stylesheet.
 		 */
 		var status = E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('Live status')),
-			E('div', { 'id': 'ledfancontrol_status' }, E('em', {}, _('Reading…')))
+			E('div', { 'class': 'cbi-map-descr', 'id': 'ledfancontrol_status' },
+				E('em', {}, _('Reading…')))
 		]);
 
 		/* ---------------------------------------------------------------- */
