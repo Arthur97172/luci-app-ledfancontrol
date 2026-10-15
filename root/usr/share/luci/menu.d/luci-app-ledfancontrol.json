@@ -1,0 +1,13 @@
+{
+	"admin/system/ledfancontrol": {
+		"title": "Led&fan Control",
+		"order": 55,
+		"action": {
+			"type": "view",
+			"path": "ledfancontrol"
+		},
+		"depends": {
+			"acl": [ "luci-app-ledfancontrol" ]
+		}
+	}
+}

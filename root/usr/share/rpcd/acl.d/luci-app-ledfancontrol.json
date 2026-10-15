@@ -1,0 +1,18 @@
+{
+	"luci-app-ledfancontrol": {
+		"description": "Grant access to the LED and fan control configuration",
+		"read": {
+			"ubus": {
+				"ledfancontrol": [ "backends", "status", "capabilities" ],
+				"rc": [ "list" ]
+			},
+			"uci": [ "factory_pwm", "ledfancontrol" ]
+		},
+		"write": {
+			"ubus": {
+				"rc": [ "init" ]
+			},
+			"uci": [ "factory_pwm", "ledfancontrol" ]
+		}
+	}
+}

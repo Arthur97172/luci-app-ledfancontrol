@@ -1,0 +1,322 @@
+#!/bin/sh
+#
+# Copyright (C) 2026 Arthur97172 <arthur97172@outlook.com>
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# rpcd exec plugin behind the "ledfancontrol" ubus object.
+#
+# Why this exists at all, rather than letting the view read the status file
+# itself with fs.read():
+#
+#   A backend that drives the kernel's own LED/PWM/hwmon/thermal classes has to
+#   *enumerate* them - /sys/class/thermal/thermal_zone*, /sys/class/hwmon/hwmon*,
+#   /sys/class/leds/* - because the zone and hwmon indices differ from board to
+#   board. rpcd's file ACL is a fixed list of literal paths; it has no way to
+#   express a glob, so no static ACL can grant the view access to "whatever
+#   thermal zones this board happens to have". Doing the enumeration here, where
+#   the code already runs as root, keeps the ACL to a single object grant no
+#   matter how many files the backend ends up touching.
+#
+#   The same reasoning covers the probe below: "is there a supported backend
+#   here" is a question about the device, and the answer belongs on the device.
+#
+# This script is deliberately POSIX sh. rpcd's exec backend runs whatever it
+# finds in /usr/libexec/rpcd/ and speaks to it over stdin/stdout, so a shell
+# script needs no compiled dependency and the package stays Architecture: all.
+# It uses jshn.sh from ubox, which is part of the base system on every OpenWrt
+# and ImmortalWrt release.
+#
+# Protocol, as implemented by rpcd's exec plugin:
+#
+#   ledfancontrol list           -> {"<method>": {"<arg>": "<type>", ...}, ...}
+#   ledfancontrol call <method>  -> reads a JSON object of arguments on stdin,
+#                                   writes the JSON result on stdout
+#
+# The method list below must stay in step with the descriptors in
+# htdocs/luci-static/resources/ledfancontrol/backend.js: the ids emitted by
+# backends are the ids the view looks up there, and the shape emitted by
+# capabilities is the shape that descriptor is built from. This half knows which
+# hardware is present; that half knows how to present it.
+#
+
+. /usr/share/libubox/jshn.sh
+
+# The vendor daemon. Its binary is the probe, not its status file: the status
+# file only appears once the daemon has been running for a moment, so probing
+# for it would report "no backend" on a freshly installed system for as long as
+# the service takes to come up.
+FACTORY_PWM_BIN=/usr/bin/factory-pwm
+FACTORY_PWM_STATUS=/tmp/factory-pwm-status.json
+
+# The generic backend, which drives the kernel's own classes. Its probe is not a
+# binary but the presence of anything it could actually control - see
+# sysfs_available.
+SYSFS_STATUS=/tmp/ledfancontrol-status.json
+
+LED_ROOT=/sys/class/leds
+HWMON_ROOT=/sys/class/hwmon
+THERMAL_ROOT=/sys/class/thermal
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+# A file's contents if they are a plain integer, else the given default. Used on
+# every sysfs read: a value can be absent, or the file can vanish between the
+# directory listing and the read, and neither should put a word like "none" into
+# a JSON number.
+read_int() {
+	local v
+
+	v="$(cat "$1" 2>/dev/null)"
+	case "$v" in
+		''|*[!0-9]*) v="$2" ;;
+	esac
+
+	printf '%s\n' "$v"
+}
+
+# The trigger a LED is currently using, i.e. the bracketed entry in its trigger
+# list. Empty when the list has nothing bracketed, which is the normal state of
+# a LED whose trigger has never been set.
+current_trigger() {
+	sed -n 's/.*\[\([^]]*\)\].*/\1/p' "$1/trigger" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# probing
+# ---------------------------------------------------------------------------
+
+# True when there is at least one thing the generic backend could control: a
+# writable LED, or a fan on a writable hwmon pwm1.
+#
+# Note that this asks about *writability*, not about presence. A board whose
+# only LED is claimed by the kernel's own trigger still reports one here, and
+# that is intended - the generic backend can take it over, and the kernel
+# triggers are among the things it offers. What it will not do is claim a LED
+# whose brightness cannot be written at all, which is how several drivers mark a
+# LED as fixed.
+sysfs_available() {
+	local d
+
+	for d in "$LED_ROOT"/*; do
+		[ -w "$d/brightness" ] && return 0
+	done
+
+	for d in "$HWMON_ROOT"/hwmon*; do
+		[ -w "$d/pwm1" ] && return 0
+	done
+
+	return 1
+}
+
+# Every usable backend, in priority order.
+#
+# The vendor daemon comes first because it owns the PWM channels on the board
+# this package came from, and a generic backend driving the same fan would fight
+# it. /etc/init.d/ledfancontrol applies the same rule before starting the
+# generic daemon; the two must agree, or the page and the hardware end up with
+# different ideas about who is in charge.
+probe_backends() {
+	local list=""
+
+	[ -x "$FACTORY_PWM_BIN" ] && list="$list factory-pwm"
+	sysfs_available && list="$list sysfs"
+
+	printf '%s\n' "$list"
+}
+
+# The backend the device has decided to use: the first usable one.
+active_backend() {
+	local b
+
+	for b in $(probe_backends); do
+		printf '%s\n' "$b"
+		return 0
+	done
+
+	return 1
+}
+
+status_file() {
+	case "$(active_backend)" in
+		factory-pwm) printf '%s\n' "$FACTORY_PWM_STATUS" ;;
+		sysfs)       printf '%s\n' "$SYSFS_STATUS" ;;
+	esac
+}
+
+# ---------------------------------------------------------------------------
+# methods
+# ---------------------------------------------------------------------------
+
+# Report which backends this device can use, and which one is active.
+#
+# `available` is every backend whose probe succeeded. `active` is the first of
+# them. Keeping both means the view can say "found X, using Y" without another
+# round trip, and can tell "no hardware at all" apart from "hardware this
+# version of the page does not know how to drive".
+list_backends() {
+	local b
+
+	json_init
+	json_add_array available
+	for b in $(probe_backends); do
+		json_add_string "" "$b"
+	done
+	json_close_array
+	json_add_string active "$(active_backend)"
+	json_dump
+}
+
+# What the kernel actually offers, for the view to build the generic backend's
+# form out of.
+#
+# This is the method that could not be replaced by an ACL. It reports every LED,
+# every hwmon device and every thermal zone, by name and with the attributes
+# that decide what can be done with them - and the view turns that into a form
+# whose options are the hardware that is really there, rather than a list of
+# names that happen to be right on one board.
+#
+# hwmon devices are reported by name because their indices are not stable: they
+# are assigned in probe order, so the same fan moves between hwmon0 and hwmon2
+# across boots, and one driver failing to probe renumbers every device after it.
+# The name the driver reports is the only stable handle.
+show_capabilities() {
+	local d name t
+
+	json_init
+
+	json_add_array leds
+	for d in "$LED_ROOT"/*; do
+		[ -d "$d" ] || continue
+		[ -w "$d/brightness" ] || continue
+
+		name="${d##*/}"
+
+		json_add_object ""
+		json_add_string name "$name"
+		json_add_int max_brightness "$(read_int "$d/max_brightness" 255)"
+		json_add_boolean multicolor "$([ -w "$d/multi_intensity" ] && echo 1 || echo 0)"
+		json_add_string trigger "$(current_trigger "$d")"
+		json_add_array triggers
+		for t in $(cat "$d/trigger" 2>/dev/null); do
+			json_add_string "" "$t"
+		done
+		json_close_array
+		json_close_object
+	done
+	json_close_array
+
+	json_add_array hwmon
+	for d in "$HWMON_ROOT"/hwmon*; do
+		[ -r "$d/name" ] || continue
+
+		name="$(cat "$d/name" 2>/dev/null)"
+		[ -n "$name" ] || continue
+
+		json_add_object ""
+		json_add_string name "$name"
+		json_add_boolean pwm "$([ -w "$d/pwm1" ] && echo 1 || echo 0)"
+		json_add_boolean pwm_enable "$([ -w "$d/pwm1_enable" ] && echo 1 || echo 0)"
+		json_add_boolean tach "$([ -r "$d/fan1_input" ] && echo 1 || echo 0)"
+		json_close_object
+	done
+	json_close_array
+
+	json_add_array thermal
+	for d in "$THERMAL_ROOT"/thermal_zone*; do
+		[ -r "$d/temp" ] || continue
+
+		t="$(cat "$d/temp" 2>/dev/null)"
+		case "$t" in
+			''|*[!0-9-]*) continue ;;
+		esac
+
+		json_add_object ""
+		json_add_string zone "${d##*/}"
+		json_add_string type "$(cat "$d/type" 2>/dev/null)"
+		json_add_int temp "$(( t / 1000 ))"
+		json_close_object
+	done
+	json_close_array
+
+	json_dump
+}
+
+# Relay the active backend's status document.
+#
+# The document is passed through byte for byte rather than parsed and rebuilt:
+# the daemon's numbers are numbers, and round-tripping them through jshn - which
+# has no notion of a JSON number and would hand them back as strings - would
+# quietly change the shape of the document the view is written against. Both
+# backends publish the same shape for the same reason, so the view does not need
+# to know which one answered.
+#
+# The daemon rewrites the file every second or two, so it can be caught
+# mid-write. Reading it once into a variable and validating that copy closes
+# that window: a torn read fails validation and is reported as "nothing yet",
+# which is what it is, rather than being fed to rpcd as half a document.
+show_status() {
+	local data file
+
+	file="$(status_file)"
+	[ -n "$file" ] || { json_init; json_dump; return; }
+
+	data="$(cat "$file" 2>/dev/null)"
+
+	if [ -z "$data" ]; then
+		json_init
+		json_dump
+		return
+	fi
+
+	# jsonfilter is the parser rpcd itself will use, so agreeing with it is the
+	# point. If it is somehow absent, hand the data over unvalidated rather than
+	# reporting "no status" forever.
+	if ! command -v jsonfilter >/dev/null 2>&1 ||
+	   printf '%s' "$data" | jsonfilter -e '@' >/dev/null 2>&1
+	then
+		printf '%s' "$data"
+	else
+		json_init
+		json_dump
+	fi
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object backends
+		json_close_object
+		json_add_object status
+		json_close_object
+		json_add_object capabilities
+		json_close_object
+		json_dump
+		;;
+
+	call)
+		# Drain the argument object rpcd wrote, so that it never blocks on a
+		# full pipe waiting for us to read it. No method takes arguments today;
+		# the read is here so that adding one later cannot deadlock.
+		cat >/dev/null 2>&1
+
+		case "$2" in
+			backends)
+				list_backends
+				;;
+			status)
+				show_status
+				;;
+			capabilities)
+				show_capabilities
+				;;
+			*)
+				json_init
+				json_add_string error "Unknown method"
+				json_dump
+				exit 1
+				;;
+		esac
+		;;
+esac

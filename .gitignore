@@ -1,0 +1,7 @@
+# Byte-for-byte copies of the vendor packages, kept for provenance only.
+# They are not ours to redistribute, so they stay out of the repository.
+docs/original/
+
+# docs/reverse-engineering/ *is* tracked: it is our own write-up of the
+# observed behaviour of the closed-source backend, and the source of truth
+# for every default the frontend ships.

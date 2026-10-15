@@ -1,0 +1,62 @@
+#!/bin/sh /etc/rc.common
+#
+# Copyright (C) 2026 Arthur97172 <arthur97172@outlook.com>
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Service wrapper for the generic sysfs backend of luci-app-ledfancontrol.
+#
+# The actual work is in /usr/libexec/ledfancontrol-daemon; this file only tells
+# procd to keep it running. It exists so that the LuCI page can reload the
+# backend over ubus (rc.init) exactly as it does for the vendor's factory-pwm,
+# and so that the daemon survives a crash.
+
+START=21
+STOP=89
+USE_PROCD=1
+
+DAEMON=/usr/libexec/ledfancontrol-daemon
+
+start_service() {
+	# Two backends must not drive the same PWM channel. When the vendor daemon
+	# is installed it owns the fan and the RGB LED, so this one stays down.
+	#
+	# This is the same rule the rpcd plugin applies when it decides which
+	# backend is `active`: factory-pwm wins whenever it is present. The two are
+	# deliberately kept identical - if the plugin ever reports a different
+	# winner than this test, the page and the hardware disagree about who is in
+	# charge, which is exactly the failure this guard exists to prevent.
+	[ -x /usr/bin/factory-pwm ] && return 0
+
+	[ -x "$DAEMON" ] || return 0
+
+	procd_open_instance
+	procd_set_param command "$DAEMON"
+	procd_set_param respawn
+	procd_set_param stdout 0
+	procd_set_param stderr 0
+	procd_close_instance
+}
+
+reload_service() {
+	# The daemon reads its configuration once, into shell variables, and then
+	# loops; there is nothing it can re-read in place. A reload is therefore a
+	# restart, and saying so explicitly matters: without this function rc.common
+	# falls back to signalling a config-change event, which a procd instance
+	# only acts on if it was declared with `procd_set_param file`. This one is
+	# not, so the event would go nowhere and the page would report success while
+	# the daemon kept running the old settings.
+	restart
+}
+
+service_triggers() {
+	# Lets a plain `uci commit ledfancontrol` reload the daemon without going
+	# through the page, the same way the vendor's script triggers on
+	# factory_pwm.
+	procd_add_reload_trigger "ledfancontrol"
+}
+
+stop_service() {
+	# The status file describes a running daemon; leaving it behind would make
+	# the page show the last reading for ever.
+	rm -f /tmp/ledfancontrol-status.json
+}

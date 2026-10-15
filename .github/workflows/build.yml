@@ -1,0 +1,211 @@
+name: Build Package
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: 语法检查（JS）
+        run: |
+          node --check htdocs/luci-static/resources/ledfancontrol/backend.js
+          node --check htdocs/luci-static/resources/view/ledfancontrol.js
+
+      - name: 语法检查（shell）
+        run: |
+          sh -n root/usr/libexec/ledfancontrol-daemon
+          sh -n root/usr/libexec/rpcd/ledfancontrol
+          sh -n root/etc/init.d/ledfancontrol
+          sh -n root/etc/uci-defaults/luci-app-ledfancontrol
+
+      - name: 可执行位检查
+        run: |
+          # luci.mk 用 cp -pR 把 root/ 整棵树搬进包里，权限位是原样保留的，
+          # 所以可执行位必须在仓库里就是对的 —— 装到设备上再发现脚本不可执行就晚了。
+          # git 只记录 100644/100755，检出会还原，因此这个检查是有效的。
+          for f in \
+            root/usr/libexec/ledfancontrol-daemon \
+            root/usr/libexec/rpcd/ledfancontrol \
+            root/etc/init.d/ledfancontrol \
+            root/etc/uci-defaults/luci-app-ledfancontrol
+          do
+            [ -x "$f" ] || { echo "缺少可执行位: $f"; exit 1; }
+          done
+
+      - name: 校验 JSON（菜单与 ACL）
+        run: |
+          python3 -m json.tool root/usr/share/luci/menu.d/luci-app-ledfancontrol.json > /dev/null
+          python3 -m json.tool root/usr/share/rpcd/acl.d/luci-app-ledfancontrol.json > /dev/null
+
+      - name: 校验翻译目录
+        run: |
+          command -v msgfmt >/dev/null || sudo apt-get install -y gettext
+          msgfmt --check --statistics -o /dev/null po/zh_Hans/ledfancontrol.po
+          # 翻译包目录名必须是 luci.mk 内置 LUCI_LANG 表里的拼法，否则
+          # luci.mk 会静默跳过它，装出来就没有中文。
+          [ -d po/zh_Hans ] || { echo "翻译目录名不是 po/zh_Hans"; exit 1; }
+
+      - name: 包扫描标记检查
+        run: |
+          # OpenWrt 的 include/scan.mk 靠 grep Makefile 里的字面量 "call BuildPackage"
+          # 来发现包目录。少了这一行，包会被静默跳过，报错是
+          # "No rule to make target"，跟真正的原因毫无关系。
+          grep -q 'call BuildPackage' Makefile || { echo "Makefile 缺少 'call BuildPackage'"; exit 1; }
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: ipk
+            sdk_url: https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/openwrt-sdk-24.10.8-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            pkg_ext: ipk
+          - artifact: apk
+            sdk_url: https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            pkg_ext: apk
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: package-dir
+
+      - name: Download SDK
+        run: |
+          curl -sL --retry 5 --retry-delay 10 "${{ matrix.sdk_url }}" -o sdk.tar.zst
+
+      - name: Extract SDK
+        run: |
+          tar -xf sdk.tar.zst
+          mv openwrt-sdk-* sdk
+
+      - name: Copy package to SDK
+        run: |
+          mkdir -p sdk/package/luci-app-ledfancontrol
+          cp -r package-dir/* sdk/package/luci-app-ledfancontrol/
+
+      - name: Install feeds
+        run: |
+          cd sdk
+          # 不能只装 luci feed。本包声明了 +luci-base，构建会先解析它，
+          # 而 luci-base 依赖 lucihttp —— 那是 C 代码，要 #include <ucode/module.h>，
+          # ucode/libubox/libubus/rpcd 全在 packages feed 里。只装 luci 会在编译
+          # lucihttp 时报 "ucode/module.h: No such file or directory"，
+          # 看起来像本包的 bug，其实不是。
+          sed -e 's/^src-git-full /src-git /' feeds.conf.default > feeds.conf
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          # 显式选中中文：i18n 子包的 DEFAULT 是 LUCI_LANG_zh_Hans||(ALL&&m)。
+          # SDK 自带 CONFIG_ALL=y，本就落到 m，这里显式置 y 以免依赖该默认值。
+          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
+          make defconfig
+
+      - name: Build package
+        run: |
+          cd sdk
+          # 只需目录级目标：luci.mk 的 LuciTranslation 在同一个 Makefile 里求值，
+          # i18n 子包与该目录同属一个 builddir，会一并编译。
+          # 注意不存在 package/luci-i18n-ledfancontrol-zh-cn/compile 这个目标。
+          make -j"$(nproc)" package/luci-app-ledfancontrol/compile V=s
+
+      - name: Collect artifact
+        run: |
+          mkdir -p artifacts
+          find sdk/bin/packages -type f -name "luci-*ledfancontrol*.${{ matrix.pkg_ext }}" -exec cp {} artifacts/ \;
+          # 不能用 test -s artifacts/*：多个产物时 glob 展开成多参数，test 会报 binary operator expected
+          [ -n "$(ls -A artifacts 2>/dev/null)" ] || { echo "No artifact found!"; exit 1; }
+          # 翻译包缺失说明 i18n 子包没被编译出来，直接失败以便尽早发现
+          ls artifacts/ | grep -q "luci-i18n-ledfancontrol" || { echo "i18n package missing!"; exit 1; }
+          ls -lh artifacts/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts/
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Read version from Makefile
+        id: version
+        run: |
+          VER=$(sed -n 's/^PKG_VERSION:=//p' Makefile | tr -d '[:space:]')
+          REL=$(sed -n 's/^PKG_RELEASE:=//p' Makefile | tr -d '[:space:]')
+          PKGVER="${VER}-r${REL}"
+          echo "PKGVER=${PKGVER}" >> "$GITHUB_OUTPUT"
+          echo "包版本：${PKGVER}"
+
+      - name: Download ipk artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ipk
+          path: artifacts
+
+      - name: Download apk artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: apk
+          path: artifacts
+
+      - name: Verify artifacts
+        run: |
+          mkdir -p artifacts
+          if ! ls artifacts/* 1>/dev/null 2>&1; then
+            echo "没有编译产物，终止构建"
+            exit 1
+          fi
+          ls -lh artifacts/
+
+      - name: Delete existing release/tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PKGVER="${{ steps.version.outputs.PKGVER }}"
+          gh release delete "$PKGVER" -y --cleanup-tag 2>/dev/null || true
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$PKGVER" 2>/dev/null || true
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.PKGVER }}
+          name: ${{ steps.version.outputs.PKGVER }}
+          body: |
+            自动编译的插件包（版本 ${{ steps.version.outputs.PKGVER }}）
+
+            - `.ipk`（opkg）— OpenWrt/ImmortalWrt 24.10 及更早
+            - `.apk`（apk）— OpenWrt/ImmortalWrt 25.12+
+            - 架构 `all`：包内只有 shell 脚本与 LuCI2 前端资源，无编译产物，
+              同一份产物同时支持 ARM / x86 / MIPS 等所有平台
+            - `luci-i18n-ledfancontrol-zh-cn`：中文翻译包，单独安装；不装则界面显示英文
+
+            安装后出现「系统 → Led&fan Control」。本包**不含**厂商的闭源
+            `/usr/bin/factory-pwm`：它由设备原有固件提供，本包在检测到它时
+            使用它，检测不到时改用内核自身的 LED / hwmon / thermal 接口。
+          files: artifacts/*
+          token: ${{ github.token }}
+          make_latest: true

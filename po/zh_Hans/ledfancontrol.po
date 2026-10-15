@@ -1,0 +1,315 @@
+# Simplified Chinese translation for luci-app-ledfancontrol.
+# Copyright (C) 2026 Arthur97172 <arthur97172@outlook.com>
+# This file is distributed under the same license as the package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-ledfancontrol 1.0.0\n"
+"Report-Msgid-Bugs-To: https://github.com/Arthur97172/luci-app-ledfancontrol/"
+"issues\n"
+"POT-Creation-Date: 2026-10-15 00:00+0000\n"
+"PO-Revision-Date: 2026-10-15 00:00+0000\n"
+"Last-Translator: Arthur97172 <arthur97172@outlook.com>\n"
+"Language-Team: Chinese (Simplified) <https://github.com/Arthur97172/luci-app-"
+"ledfancontrol>\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:60
+msgid "Wi-Fi 0"
+msgstr "Wi-Fi 0"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:61
+msgid "Wi-Fi 1"
+msgstr "Wi-Fi 1"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:62
+msgid "Wi-Fi 2"
+msgstr "Wi-Fi 2"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:63
+msgid "CPU max"
+msgstr "CPU 最高"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:64
+msgid "IoT"
+msgstr "IoT"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:87
+msgid "Automatic (follow WAN, boot and upgrade state)"
+msgstr "自动（跟随 WAN、启动和升级状态）"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:88
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:276
+msgid "Manual"
+msgstr "手动"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:89
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:275
+msgid "Off"
+msgstr "关闭"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:93
+msgid "Automatic (multi-sensor thermal table)"
+msgstr "自动（多传感器温控表）"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:94
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:281
+msgid "Manual fixed speed"
+msgstr "手动固定转速"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:113
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:194
+msgid "Blue"
+msgstr "蓝色"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:114
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:195
+msgid "Red"
+msgstr "红色"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:115
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:196
+msgid "Green"
+msgstr "绿色"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:116
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:197
+msgid "Yellow"
+msgstr "黄色"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:117
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:198
+msgid "Purple"
+msgstr "紫色"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:118
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:199
+msgid "White"
+msgstr "白色"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:126
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:237
+msgid "Solid on"
+msgstr "常亮"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:127
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:247
+msgid "Blinking"
+msgstr "闪烁"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:128
+msgid "Breathing"
+msgstr "呼吸"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:129
+msgid "Rainbow fade"
+msgstr "彩虹渐变"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:130
+msgid "Factory red/blue alternating blink"
+msgstr "原厂红蓝交替闪烁"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:131
+msgid "Factory red/blue alternating breathing"
+msgstr "原厂红蓝交替呼吸"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:132
+msgid "Factory red/white alternating blink"
+msgstr "原厂红白交替闪烁"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:133
+msgid "Factory red to blue, red held longer"
+msgstr "原厂红到蓝（红色较长）"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:134
+msgid "Factory red to blue, equal timing"
+msgstr "原厂红到蓝（等时）"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:135
+msgid "Factory dim blue"
+msgstr "原厂蓝色低亮"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:256
+msgid "Hottest sensor"
+msgstr "最高温度"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:280
+msgid "Automatic (thermal curve)"
+msgstr "自动（温度曲线）"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:327
+msgid "Curve start temperature"
+msgstr "曲线起始温度"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:328
+msgid "At or below this temperature the fan runs at the minimum speed."
+msgstr "温度达到或低于此值时，风扇以最低转速运行。"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:333
+msgid "Curve full-speed temperature"
+msgstr "曲线满速温度"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:334
+msgid ""
+"At this temperature the fan reaches full speed, and stays there above it."
+msgstr "温度达到此值时风扇升至满速，高于此值则保持满速。"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:339
+msgid "Emergency temperature"
+msgstr "应急温度"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:340
+msgid ""
+"At or above this temperature the fan is forced to full speed regardless of "
+"the curve."
+msgstr "温度达到或高于此值时，无论曲线如何，风扇强制满速。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:85
+msgid "The backend has not reported a status yet."
+msgstr "后端尚未上报状态。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:92
+msgid "No readable sensors."
+msgstr "无法读取传感器。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:112
+msgid "thermal state"
+msgstr "温控状态"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:115
+#: htdocs/luci-static/resources/view/ledfancontrol.js:120
+msgid "target"
+msgstr "目标"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:116
+msgid "measured"
+msgstr "实测"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:124
+msgid "Lighting"
+msgstr "灯光"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:125
+msgid "brightness"
+msgstr "亮度"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:127
+msgid "Fan"
+msgstr "风扇"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:128
+msgid "Temperature"
+msgstr "温度"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:171
+#: htdocs/luci-static/resources/view/ledfancontrol.js:205
+#: root/usr/share/luci/menu.d/luci-app-ledfancontrol.json:3
+msgid "Led&fan Control"
+msgstr "灯光与风扇"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:174
+#, javascript-format
+msgid ""
+"This device has a \"%s\" backend, but this version of the page has no "
+"support for it."
+msgstr "本设备有一个“%s”后端，但此版本的页面不支持它。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:175
+msgid "No supported LED and fan backend was found on this device."
+msgstr "未在本设备上找到受支持的灯光与风扇后端。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:177
+msgid ""
+"The backend is installed and running; it is only this configuration page "
+"that is out of date."
+msgstr "后端已安装并正在运行，只是这个配置页面版本过旧。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:178
+msgid ""
+"This page drives the lighting and the fan either through a vendor daemon or "
+"through the kernel's own LED, hwmon and thermal interfaces. Neither was "
+"found here."
+msgstr ""
+"本页通过厂商守护进程、或通过内核自身的 LED、hwmon 与 thermal 接口来驱动灯光与"
+"风扇。本机两者都没有找到。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:206
+msgid ""
+"Unified control of the RGB PWM lighting and of the fan thermal control. A "
+"change takes effect as soon as it is saved and applied."
+msgstr "统一控制 RGB PWM 灯光与风扇温控。保存并应用后立即生效。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:214
+msgid "Live status"
+msgstr "实时状态"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:215
+msgid "Reading…"
+msgstr "正在读取……"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:222
+msgid "System RGB LED"
+msgstr "系统 RGB 灯"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:231
+msgid "LED"
+msgstr "指示灯"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:235
+msgid "multicolour"
+msgstr "彩色"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:243
+#: htdocs/luci-static/resources/view/ledfancontrol.js:318
+msgid "Control mode"
+msgstr "控制模式"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:262
+msgid "Manual colour"
+msgstr "手动颜色"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:273
+msgid "Manual effect"
+msgstr "手动效果"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:280
+msgid "Brightness"
+msgstr "亮度"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:291
+msgid "Cooling fan"
+msgstr "散热风扇"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:301
+msgid "Fan device"
+msgstr "风扇设备"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:305
+msgid "with tachometer"
+msgstr "带测速"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:320
+#, javascript-format
+msgid "Manual mode still keeps the forced full speed protection above %d °C."
+msgstr "手动模式在温度超过 %d °C 时仍会强制满速保护。"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:347
+msgid "Minimum speed in automatic mode"
+msgstr "自动模式最低转速"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:350
+msgid "recommended"
+msgstr "推荐"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:357
+msgid "Manual target speed"
+msgstr "手动目标转速"
+
+#: htdocs/luci-static/resources/view/ledfancontrol.js:436
+#, javascript-format
+msgid "Failed to apply the settings: %s"
+msgstr "应用设置失败：%s"

@@ -1,0 +1,373 @@
+#!/bin/sh
+#
+# Copyright (C) 2026 Arthur97172 <arthur97172@outlook.com>
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Generic sysfs backend for luci-app-ledfancontrol.
+#
+# This is the second backend, next to the vendor's closed-source factory-pwm.
+# Where factory-pwm writes the RGB LED's raw PWM channels and carries its own
+# multi-sensor thermal table, this one drives the interfaces the kernel already
+# publishes:
+#
+#   LED      /sys/class/leds/<name>/  - trigger, brightness, delay_on/off and,
+#                                      on multicolour LEDs, multi_intensity
+#   fan      /sys/class/hwmon/<n>/    - pwm1 and pwm1_enable, matched by the
+#                                      hwmon device's *name*, never by its
+#                                      index (see below)
+#   thermal  /sys/class/thermal/thermal_zone*/temp and hwmon temp*_input
+#
+# It is deliberately generic: nothing here is specific to the board this package
+# was extracted from, and on that board in particular most of it does nothing at
+# all, because its RGB LED is not a kernel LED and its fan has no thermal
+# cooling map. See README.md.
+#
+# Two things are worth knowing before reading the code.
+#
+# First, hwmon devices are matched by name. /sys/class/hwmon/hwmonN is numbered
+# in probe order, so the same fan is hwmon0 on one boot and hwmon2 on the next,
+# and a driver that fails to probe shifts every later index by one. The vendor's
+# own /etc/init.d/bootcount on the reference board hardcodes
+# /sys/devices/platform/soc/78ba000.i2c/i2c-0/0-002f/hwmon/hwmon0/pwm1 - a path
+# that does not exist on that board at all. Matching on the name the driver
+# reports is the only stable way.
+#
+# Second, the fan's automatic mode prefers the kernel. If any thermal zone binds
+# a fan cooling device, pwm1_enable=2 hands the fan to the kernel's thermal
+# governor and this daemon stops touching it. Only when there is no such binding
+# - which is the case on the reference board - does the userspace curve below
+# take over. Boards that are set up correctly in device tree therefore get the
+# kernel's own hysteresis and step logic instead of ours.
+
+. /lib/functions.sh
+
+CONF=ledfancontrol
+STATUS=/tmp/ledfancontrol-status.json
+
+LED_ROOT=/sys/class/leds
+HWMON_ROOT=/sys/class/hwmon
+THERMAL_ROOT=/sys/class/thermal
+
+# Seconds between thermal samples. The fan curve does not need to be fast, and
+# every sample is a handful of file reads.
+INTERVAL=2
+
+# Rewrite pwm1 only when the target moves by at least this many percent, so that
+# a sensor sitting on a step boundary does not make the fan whine.
+HYSTERESIS=3
+
+# ---------------------------------------------------------------------------
+# configuration
+# ---------------------------------------------------------------------------
+
+config_load "$CONF"
+
+config_get led_device   led device     ''
+config_get led_mode     led mode       'off'
+config_get led_effect   led effect     'on'
+config_get led_color    led color      'blue'
+config_get led_bright   led brightness '100'
+
+config_get fan_mode     fan mode       'auto'
+config_get fan_hwmon    fan hwmon      'pwmfan'
+config_get fan_min_pwm  fan min_pwm    '30'
+config_get fan_man_pwm  fan manual_pwm '60'
+config_get fan_min_temp fan min_temp   '40'
+config_get fan_max_temp fan max_temp   '90'
+config_get fan_overtemp fan overtemp   '100'
+
+# ---------------------------------------------------------------------------
+# LED
+# ---------------------------------------------------------------------------
+
+# Write multi_intensity for the named colour. The channel order is whatever the
+# LED reports in multi_index - it is "blue green red" on some parts - so the
+# intensities are assembled in that order rather than assumed to be RGB.
+led_write_colour() {
+	local dir="$1" colour="$2" pct="$3"
+	local r g b idx comp val maxb out
+
+	case "$colour" in
+		red)    r=255; g=0;   b=0   ;;
+		green)  r=0;   g=255; b=0   ;;
+		blue)   r=0;   g=0;   b=255 ;;
+		yellow) r=255; g=255; b=0   ;;
+		purple) r=255; g=0;   b=255 ;;
+		white)  r=255; g=255; b=255 ;;
+		*) return 1 ;;
+	esac
+
+	idx="$(cat "$dir/multi_index" 2>/dev/null)"
+	[ -n "$idx" ] || return 1
+
+	maxb="$(cat "$dir/max_brightness" 2>/dev/null)"
+	case "$maxb" in ''|*[!0-9]*) maxb=255 ;; esac
+	[ "$maxb" -gt 0 ] || maxb=255
+
+	out=''
+	for comp in $idx; do
+		case "$comp" in
+			red)   val=$r ;;
+			green) val=$g ;;
+			blue)  val=$b ;;
+			*)     val=0 ;;
+		esac
+		out="$out $(( val * pct * maxb / 100 / 255 ))"
+	done
+
+	printf '%s\n' "${out# }" > "$dir/multi_intensity" 2>/dev/null
+}
+
+apply_led() {
+	local dir maxb level
+
+	led_state='off'
+
+	[ -n "$led_device" ] || return 0
+
+	# The device name comes from UCI and is used as a path component. It is
+	# written through LuCI by root and picked from a list of what the kernel
+	# actually has, but it is still checked here: a stray slash or a leading dot
+	# would otherwise let the setting address a path outside /sys/class/leds.
+	case "$led_device" in
+		*/*|.*|'') return 0 ;;
+	esac
+
+	dir="$LED_ROOT/$led_device"
+	[ -d "$dir" ] || return 0
+
+	if [ "$led_mode" = 'off' ]; then
+		echo none > "$dir/trigger" 2>/dev/null
+		echo 0 > "$dir/brightness" 2>/dev/null
+		return 0
+	fi
+
+	maxb="$(cat "$dir/max_brightness" 2>/dev/null)"
+	case "$maxb" in ''|*[!0-9]*) maxb=255 ;; esac
+	[ "$maxb" -gt 0 ] || maxb=255
+
+	level=$(( maxb * led_bright / 100 ))
+	[ "$level" -gt 0 ] || level=1
+
+	# The trigger is set before the brightness because switching triggers
+	# resets the LED, and the timer trigger needs a non-zero brightness to have
+	# anything to blink.
+	case "$led_effect" in
+		blink)
+			echo timer > "$dir/trigger" 2>/dev/null
+			echo 500 > "$dir/delay_on" 2>/dev/null
+			echo 500 > "$dir/delay_off" 2>/dev/null
+			;;
+		*)
+			echo none > "$dir/trigger" 2>/dev/null
+			;;
+	esac
+
+	[ -w "$dir/multi_intensity" ] && led_write_colour "$dir" "$led_color" "$led_bright"
+
+	echo "$level" > "$dir/brightness" 2>/dev/null
+
+	led_state="${led_color}_${led_effect}"
+	return 0
+}
+
+# ---------------------------------------------------------------------------
+# fan
+# ---------------------------------------------------------------------------
+
+# The hwmon directory of the configured fan, or empty. Matched by the name the
+# driver reports, not by the hwmon index - see the header.
+fan_dir() {
+	local d name
+
+	for d in "$HWMON_ROOT"/hwmon*; do
+		[ -r "$d/name" ] || continue
+		name="$(cat "$d/name" 2>/dev/null)"
+		[ "$name" = "$fan_hwmon" ] || continue
+		[ -w "$d/pwm1" ] || continue
+
+		printf '%s\n' "$d"
+		return 0
+	done
+
+	return 1
+}
+
+# True when some thermal zone binds a fan cooling device, which means the kernel
+# can drive this fan itself.
+kernel_auto_available() {
+	local l
+
+	for l in "$THERMAL_ROOT"/thermal_zone*/cdev*; do
+		[ -e "$l" ] || continue
+
+		case "$(cat "$l/type" 2>/dev/null)" in
+			*fan*) return 0 ;;
+		esac
+	done
+
+	return 1
+}
+
+# Hottest readable sensor, in whole degrees Celsius.
+max_temp_c() {
+	local d f t v max=''
+
+	for d in "$THERMAL_ROOT"/thermal_zone*; do
+		[ -r "$d/temp" ] || continue
+		t="$(cat "$d/temp" 2>/dev/null)"
+		case "$t" in ''|*[!0-9-]*) continue ;; esac
+
+		v=$(( t / 1000 ))
+		[ -z "$max" ] || [ "$v" -gt "$max" ] && max="$v"
+	done
+
+	for d in "$HWMON_ROOT"/hwmon*; do
+		for f in "$d"/temp*_input; do
+			[ -r "$f" ] || continue
+			t="$(cat "$f" 2>/dev/null)"
+			case "$t" in ''|*[!0-9-]*) continue ;; esac
+
+			v=$(( t / 1000 ))
+			[ -z "$max" ] || [ "$v" -gt "$max" ] && max="$v"
+		done
+	done
+
+	printf '%s\n' "${max:-0}"
+}
+
+# The automatic curve, in percent. Flat at min_pwm up to min_temp, linear from
+# there to 100% at max_temp, and pinned to 100% at or above overtemp.
+curve_pwm() {
+	local t="$1" span pwm
+
+	[ "$t" -ge "$fan_overtemp" ] && { printf '100\n'; return; }
+
+	if [ "$t" -le "$fan_min_temp" ]; then
+		pwm="$fan_min_pwm"
+	else
+		span=$(( fan_max_temp - fan_min_temp ))
+		[ "$span" -gt 0 ] || span=1
+
+		pwm=$(( fan_min_pwm + (100 - fan_min_pwm) * (t - fan_min_temp) / span ))
+	fi
+
+	[ "$pwm" -gt 100 ] && pwm=100
+	[ "$pwm" -lt "$fan_min_pwm" ] && pwm="$fan_min_pwm"
+
+	printf '%s\n' "$pwm"
+}
+
+# ---------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------
+
+write_status() {
+	local tmp="$STATUS.$$" d t
+
+	{
+		printf '{\n'
+		printf '\t"updated": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+		printf '\t"led": "%s",\n' "$led_state"
+		printf '\t"led_mode": "%s",\n' "$led_mode"
+		printf '\t"brightness_percent": %s,\n' "$led_bright"
+		printf '\t"fan_mode": "%s",\n' "$fan_mode"
+		printf '\t"target_pwm": %s,\n' "$target_pwm"
+		printf '\t"fan_pwm_0_255": %s,\n' "$pwm255"
+		printf '\t"thermal_state": %s,\n' "$thermal_state"
+
+		# The hottest reading is repeated inside `sensors` rather than only
+		# sitting at the top level, because that is the object the view renders
+		# and the descriptor's entry for it is keyed there. It is the first key
+		# so that it heads the list.
+		printf '\t"sensors": {\n\t\t"hottest_c": %s' "$hottest"
+		for d in "$THERMAL_ROOT"/thermal_zone*; do
+			[ -r "$d/temp" ] || continue
+			t="$(cat "$d/temp" 2>/dev/null)"
+			case "$t" in ''|*[!0-9-]*) continue ;; esac
+
+			printf ',\n\t\t"%s": %s' "${d##*/}" "$(( t / 1000 ))"
+		done
+		printf '\n\t}\n'
+		printf '}\n'
+	} > "$tmp" 2>/dev/null && mv "$tmp" "$STATUS" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# main loop
+# ---------------------------------------------------------------------------
+
+led_state='off'
+target_pwm=0
+pwm255=0
+hottest=0
+thermal_state=0
+
+apply_led
+
+FAN_DIR="$(fan_dir)" || FAN_DIR=''
+
+if [ -n "$FAN_DIR" ]; then
+	if [ "$fan_mode" = 'auto' ] && kernel_auto_available; then
+		# The kernel owns the fan from here; this daemon only reports on it.
+		FAN_KERNEL=1
+		echo 2 > "$FAN_DIR/pwm1_enable" 2>/dev/null
+	else
+		FAN_KERNEL=0
+		echo 1 > "$FAN_DIR/pwm1_enable" 2>/dev/null
+	fi
+else
+	FAN_KERNEL=0
+fi
+
+while :; do
+	hottest="$(max_temp_c)"
+
+	if [ -n "$FAN_DIR" ] && [ "$FAN_KERNEL" = 0 ]; then
+		if [ "$fan_mode" = 'manual' ]; then
+			target_pwm="$fan_man_pwm"
+		else
+			target_pwm="$(curve_pwm "$hottest")"
+		fi
+
+		[ "$target_pwm" -gt 100 ] && target_pwm=100
+
+		# min_pwm is a floor for both modes, not just for the curve. A fan
+		# driven too slowly stalls, and some do not restart from a stall at all,
+		# so a manual setting below the floor is raised to it rather than
+		# obeyed. The status document reports what was actually applied, which
+		# is how a clamped setting becomes visible instead of silent.
+		[ "$target_pwm" -lt "$fan_min_pwm" ] && target_pwm="$fan_min_pwm"
+
+		pwm255=$(( target_pwm * 255 / 100 ))
+
+		# Only touch the hardware when the target actually moved.
+		if [ "$pwm255" != "$last_pwm255" ]; then
+			echo "$pwm255" > "$FAN_DIR/pwm1" 2>/dev/null
+			last_pwm255="$pwm255"
+		fi
+	elif [ -n "$FAN_DIR" ]; then
+		# The kernel is driving it; report what it settled on.
+		pwm255="$(cat "$FAN_DIR/pwm1" 2>/dev/null)"
+		case "$pwm255" in ''|*[!0-9]*) pwm255=0 ;; esac
+		target_pwm=$(( pwm255 * 100 / 255 ))
+	fi
+
+	# The thermal state is a 0..10 ladder, the same shape the vendor daemon
+	# reports, so that the view can render either backend without knowing which
+	# one it is talking to.
+	span=$(( fan_max_temp - fan_min_temp ))
+	[ "$span" -gt 0 ] || span=1
+
+	if [ "$hottest" -ge "$fan_overtemp" ]; then
+		thermal_state=10
+	else
+		thermal_state=$(( (hottest - fan_min_temp) * 10 / span ))
+		[ "$thermal_state" -lt 0 ] && thermal_state=0
+		[ "$thermal_state" -gt 10 ] && thermal_state=10
+	fi
+
+	write_status
+
+	sleep "$INTERVAL"
+done
