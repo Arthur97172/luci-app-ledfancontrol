@@ -428,10 +428,16 @@ return view.extend({
 	 * Save the form, then hand the commit to ui.changes.apply() - the stock
 	 * path, and the same one line the base view in luci.js runs.
 	 *
+	 * This override is deliberately the base implementation written out. It is
+	 * spelled out rather than inherited only so that the reasoning below sits
+	 * next to the code it protects: the page was changed into a hand-rolled
+	 * ubus call once already, and the argument against doing that again is
+	 * worth more here than in a commit message.
+	 *
 	 * Committing through uci.apply() over ubus instead - the obvious-looking
-	 * thing, and what this page used to do - fails here for two
-	 * independent reasons, and both of them are properties of the RPC rather
-	 * than of anything this page gets wrong.
+	 * thing, and what this page used to do - fails here for two independent
+	 * reasons, and both of them are properties of the RPC rather than of
+	 * anything this page gets wrong.
 	 *
 	 * It commits the whole session changeset, not this page's share of it.
 	 * rpcd stages every config any open page has touched in one per-session
