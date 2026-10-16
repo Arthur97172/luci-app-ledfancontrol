@@ -363,11 +363,25 @@ return view.extend({
 				return out;
 			};
 
+			var mins = speeds('min');
+
+			/*
+			 * The "(recommended)" marker follows the value the descriptor names
+			 * rather than the head of the list. The vendor daemon's list now
+			 * opens at 1000 RPM, which the daemon itself raises to 1500, so
+			 * marking the first entry would recommend a speed that cannot be
+			 * set. A backend that names no recommended value keeps the older
+			 * behaviour and marks its first entry.
+			 */
+			var recommended = desc.fan.recommendedMin != null
+				? String(desc.fan.recommendedMin)
+				: mins[0];
+
 			o = s.option(form.ListValue, desc.fan.minKey,
 				_('Minimum speed in automatic mode'));
-			speeds('min').forEach(function(val, i) {
+			mins.forEach(function(val) {
 				o.value(val, val + ' ' + desc.fan.unit +
-					(i === 0 ? ' (' + _('recommended') + ')' : ''));
+					(val === recommended ? ' (' + _('recommended') + ')' : ''));
 			});
 			o.default = String(desc.fan.defaultMin != null
 				? desc.fan.defaultMin

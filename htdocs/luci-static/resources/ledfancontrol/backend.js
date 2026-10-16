@@ -146,7 +146,15 @@ var FACTORY_PWM = {
 	 *
 	 * `steps` is the set of values the daemon's table actually contains, which
 	 * is not a uniform range - hence the explicit lists rather than a
-	 * min/max/step triple.
+	 * min/max/step triple. The automatic floor used to stop at 3000, which left
+	 * the upper half of the table unreachable there; both lists now name the
+	 * same nine speeds.
+	 *
+	 * The two defaults and the recommended value are named here rather than
+	 * read off the front of those lists, because 1000 RPM now leads both and
+	 * the daemon raises it to 1500 anyway: main.loadConfig clamps min_rpm and
+	 * manual_rpm to 1500 … 4700. Left positional, the page would preselect a
+	 * value the daemon silently changes, and would recommend it.
 	 */
 	fan: {
 		minKey: 'min_rpm',
@@ -155,9 +163,12 @@ var FACTORY_PWM = {
 		min: 1500,
 		max: 4700,
 		steps: {
-			min: [ 1500, 2000, 2500, 3000 ],
-			manual: [ 1500, 2000, 2500, 3000, 3500, 4000, 4500, 4700 ]
+			min: [ 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 4700 ],
+			manual: [ 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 4700 ]
 		},
+		defaultMin: 1500,
+		defaultManual: 2500,
+		recommendedMin: 1500,
 		overtempC: 108,
 		overtempHysteresisC: 4
 	},
