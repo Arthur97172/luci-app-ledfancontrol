@@ -291,24 +291,6 @@ make package/luci-app-ledfancontrol/compile V=s
 会同时产出 `luci-app-ledfancontrol` 与 `luci-i18n-ledfancontrol-zh-cn` 两个包。
 同时支持 `.ipk`（opkg）与 `.apk`（apk-openssl，OpenWrt 25.12+）。
 
-## 来源
-
-本应用的界面部分提取自一台 Qualcomm ipq95xx（QSDK 13）路由器上预装的
-`luci-app-factory-pwm` 包，并用 LuCI 2 客户端 JavaScript 重写。原包使用
-LuCI 1 的 Lua CBI（`controller/factory_pwm.lua` + `model/cbi/factory_pwm.lua`
-+ `view/factory_pwm/status.htm`），其字段、取值与依赖关系已逐一对应到本视图。
-后端 `factory-pwm` 是闭源二进制，未包含在本仓库中。
-
-后端的行为（UCI 取值与钳制范围、颜色表的三路占空比、十种灯效的实现、
-闪烁与呼吸的周期、11 档热控状态机与升/降档阈值、`fan_mode=off` 是空操作、
-传感器键名等）已通过反汇编逐条还原，整理在
-**[`docs/reverse-engineering/factory-pwm.md`](docs/reverse-engineering/factory-pwm.md)**。
-那份文档是原厂后端描述符里所有默认值的依据，其中也纠正了早期分析中的一处错误
-结论（`led_mode=manual` 是**真实生效**的，不是被当成 `auto`）。
-
-通用后端不来自任何反编译：它驱动的是内核公开的接口，实现写在
-`root/usr/libexec/ledfancontrol-daemon`，GPL-3.0-only。
-
 ## 许可
 
 GPL-3.0-only，见 [LICENSE](LICENSE)。

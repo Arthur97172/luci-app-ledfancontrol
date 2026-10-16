@@ -334,30 +334,6 @@ This produces both `luci-app-ledfancontrol` and
 `luci-i18n-ledfancontrol-zh-cn`. Both `.ipk` (opkg) and `.apk`
 (apk-openssl, OpenWrt 25.12+) are supported.
 
-## Provenance
-
-The interface was extracted from the `luci-app-factory-pwm` package preinstalled
-on a Qualcomm ipq95xx router (QSDK 13) and rewritten in LuCI 2 client-side
-JavaScript. The original used LuCI 1's Lua CBI
-(`controller/factory_pwm.lua` + `model/cbi/factory_pwm.lua` +
-`view/factory_pwm/status.htm`); its fields, values and dependencies have been
-mapped one to one onto this view. The `factory-pwm` backend is a closed-source
-binary and is not part of this repository.
-
-The backend's behaviour — the UCI values and their clamping, the three PWM duty
-cycles of each colour, the ten effects, the blink and breath periods, the
-11-state thermal machine with its up/down thresholds, `fan_mode=off` being a
-no-op, the sensor key names — was recovered by disassembling it and is written
-up in
-**[`docs/reverse-engineering/factory-pwm.md`](docs/reverse-engineering/factory-pwm.md)**.
-That document is the source of every default the vendor descriptor ships, and it
-also corrects an early conclusion that was wrong (`led_mode=manual` **is**
-honoured; it is not treated as `auto`).
-
-The generic backend comes from no disassembly at all: it drives interfaces the
-kernel publishes, and its implementation is in
-`root/usr/libexec/ledfancontrol-daemon`, GPL-3.0-only.
-
 ## License
 
 GPL-3.0-only, see [LICENSE](LICENSE).
