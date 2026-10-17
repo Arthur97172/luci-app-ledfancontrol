@@ -59,6 +59,14 @@ rpcd 插件在探测时把 `factory-pwm` 排在前面，`/etc/init.d/ledfancontr
 在页面加载时**按设备现场构建**的（`backend.js` 里的 `buildSysfs()`），原料
 来自 rpcd 插件的 `capabilities` 方法。
 
+两个后端的**配置项名字**也不一样——原厂是 `led_mode` / `led_color` /
+`led_effect` / `fan_mode`，通用是 `mode` / `color` / `effect`（两半的模式各自
+落在自己小节里的 `mode`）。这些名字因此和上面那些一样放在描述符里
+（`ledModeKey`、`ledColorKey`、`ledEffectKey`、`brightnessKey`、
+`fanModeKey`），视图只按名字取用。曾经视图把原厂那一套写死、给两个后端共用，
+于是在通用后端的板子上「控制模式」被写进 `fan_mode`，而守护进程读的是
+`mode`——切换模式完全不起作用。
+
 启动时由 rpcd 插件探测本机后端：
 
 | 探测结果 | 界面表现 |
@@ -95,6 +103,8 @@ ACL 是一份写死字面路径的清单，无法表达通配，所以没有任�
   拼装（有的器件是「蓝绿红」而不是「红绿蓝」），不假设是 RGB。
 * **风扇**：`/sys/class/hwmon/<n>/`——`pwm1` 与 `pwm1_enable`。
 * **温度**：`/sys/class/thermal/thermal_zone*/temp` 以及 hwmon 的 `temp*_input`。
+  被驱动标为故障的通道（`temp*_fault` 非零）会被**跳过**：没接的热敏二极管读数
+  是量程顶端——NCT7802 的 2 号通道就是 127.875 °C——当真会把风扇钉死在满速。
 
 ### hwmon 按名字匹配，绝不按序号
 

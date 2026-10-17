@@ -242,7 +242,7 @@ return view.extend({
 				o.rmempty = false;
 			}
 
-			o = s.option(form.ListValue, 'led_mode', _('Control mode'));
+			o = s.option(form.ListValue, desc.ledModeKey, _('Control mode'));
 			desc.ledModes.forEach(function(mode) {
 				o.value(mode.value, mode.label);
 			});
@@ -261,14 +261,24 @@ return view.extend({
 			 * entirely rather than offered and ignored.
 			 */
 			if (desc.colours.length) {
-				o = s.option(form.ListValue, 'led_color', _('Manual colour'));
+				o = s.option(form.ListValue, desc.ledColorKey, _('Manual colour'));
 				desc.colours.forEach(function(c) {
 					o.value(c.value, c.label);
 				});
 				o.default = desc.colours[0].value;
 				desc.effects.forEach(function(e) {
-					if (e.colour)
-						o.depends({ led_mode: 'manual', led_effect: e.value });
+					if (!e.colour)
+						return;
+
+					/*
+					 * Built rather than written as a literal, because both keys
+					 * belong to the backend rather than to this file.
+					 */
+					var dep = {};
+
+					dep[desc.ledModeKey] = 'manual';
+					dep[desc.ledEffectKey] = e.value;
+					o.depends(dep);
 				});
 
 				/*
@@ -287,17 +297,17 @@ return view.extend({
 				o.retain = true;
 			}
 
-			o = s.option(form.ListValue, 'led_effect', _('Manual effect'));
+			o = s.option(form.ListValue, desc.ledEffectKey, _('Manual effect'));
 			desc.effects.forEach(function(e) {
 				o.value(e.value, e.label);
 			});
 			o.default = desc.effects.length ? desc.effects[0].value : null;
-			o.depends('led_mode', 'manual');
+			o.depends(desc.ledModeKey, 'manual');
 
 			/* Retained while the LED is not in manual mode - see above. */
 			o.retain = true;
 
-			o = s.option(form.ListValue, 'brightness', _('Brightness'));
+			o = s.option(form.ListValue, desc.brightnessKey, _('Brightness'));
 			for (v = desc.brightness.min; v <= desc.brightness.max; v += desc.brightness.step)
 				o.value(String(v), v + '%');
 			o.default = String(desc.brightness.default);
@@ -335,7 +345,7 @@ return view.extend({
 			 * read from the descriptor rather than written into the string, and
 			 * the sentence is only used by a backend that has one.
 			 */
-			o = s.option(form.ListValue, 'fan_mode', _('Control mode'),
+			o = s.option(form.ListValue, desc.fanModeKey, _('Control mode'),
 				desc.fan.overtempC != null
 					? _('Manual mode still keeps the forced full speed protection above %d °C.')
 						.format(desc.fan.overtempC)
@@ -386,7 +396,7 @@ return view.extend({
 			o.default = String(desc.fan.defaultMin != null
 				? desc.fan.defaultMin
 				: desc.fan.steps.min[0]);
-			o.depends('fan_mode', 'auto');
+			o.depends(desc.fanModeKey, 'auto');
 
 			/* Retained while the fan is not in automatic mode - see above. */
 			o.retain = true;
@@ -398,7 +408,7 @@ return view.extend({
 			o.default = String(desc.fan.defaultManual != null
 				? desc.fan.defaultManual
 				: desc.fan.steps.manual[2]);
-			o.depends('fan_mode', 'manual');
+			o.depends(desc.fanModeKey, 'manual');
 
 			/* Retained while the fan is not in manual mode - see above. */
 			o.retain = true;
@@ -418,7 +428,7 @@ return view.extend({
 				o.datatype = 'range(%d,%d)'.format(f.min, f.max);
 				o.default = String(f.default);
 				o.rmempty = false;
-				o.depends('fan_mode', 'auto');
+				o.depends(desc.fanModeKey, 'auto');
 
 				/* Retained while the fan is not in automatic mode - see above. */
 				o.retain = true;

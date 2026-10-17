@@ -36,6 +36,7 @@
  *   id, title                 identity, for the "found X" wording
  *   config, service           the UCI config to edit and the init script to reload
  *   sections.led / .fan       the section type each half lives in
+ *   ...Key                    the option each setting is stored under
  *   ledModes, fanModes        [{ value, label }] - the vocabularies, per backend
  *   ledDeviceKey, ledDevices  which /sys/class/leds entry to drive (sysfs only)
  *   hwmonKey, fanDevices      which hwmon device is the fan (sysfs only)
@@ -78,6 +79,18 @@ var FACTORY_PWM = {
 		led: 'factory_led',
 		fan: 'factory_fan'
 	},
+
+	/*
+	 * The option names those settings are stored under. The vendor binary
+	 * opens the configuration by name, so these are its spelling and not ours
+	 * to choose; the generic backend's differ, which is why the view reads
+	 * them from here rather than spelling them out for every backend.
+	 */
+	ledModeKey:    'led_mode',
+	ledColorKey:   'led_color',
+	ledEffectKey:  'led_effect',
+	brightnessKey: 'brightness',
+	fanModeKey:    'fan_mode',
 
 	/*
 	 * The daemon has three LED modes, and its `auto` follows the WAN link
@@ -184,6 +197,13 @@ var NONE = {
 
 	sections: { led: 'led', fan: 'fan' },
 
+	/* Nothing renders, so nothing reads them; absent rather than wrong. */
+	ledModeKey: null,
+	ledColorKey: null,
+	ledEffectKey: null,
+	brightnessKey: null,
+	fanModeKey: null,
+
 	ledModes: [],
 	fanModes: [],
 	ledDeviceKey: null,
@@ -273,6 +293,20 @@ function buildSysfs(caps) {
 		service: 'ledfancontrol',
 
 		sections: { led: 'led', fan: 'fan' },
+
+		/*
+		 * The generic daemon reads the same settings under shorter names -
+		 * `mode`, `color`, `effect` - and both halves' mode lives in `mode`,
+		 * in their own sections. Getting this wrong is not hypothetical: the
+		 * view used to spell the vendor's names out for every backend, so on
+		 * a sysfs board it wrote `fan_mode` while the daemon read `mode`, and
+		 * the mode selector did nothing at all.
+		 */
+		ledModeKey:    'mode',
+		ledColorKey:   'color',
+		ledEffectKey:  'effect',
+		brightnessKey: 'brightness',
+		fanModeKey:    'mode',
 
 		/*
 		 * There is no `auto` here. Following the WAN link state is the vendor

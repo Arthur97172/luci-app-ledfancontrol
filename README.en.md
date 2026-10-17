@@ -70,6 +70,15 @@ which thermal zones are readable are all properties of the board, so it is
 *built* per device at page load (`buildSysfs()` in `backend.js`), out of the
 rpcd plugin's `capabilities` method.
 
+The two backends **do not even agree on what their options are called**. The
+vendor's are `led_mode` / `led_color` / `led_effect` / `fan_mode`; the generic
+one's are `mode` / `color` / `effect`, with each half's mode landing in `mode`
+inside its own section. Those names therefore live in the descriptor too
+(`ledModeKey`, `ledColorKey`, `ledEffectKey`, `brightnessKey`, `fanModeKey`),
+and the view only looks them up. It used to spell the vendor's set out for both
+backends, so on a sysfs board the mode selector wrote `fan_mode` while the
+daemon read `mode` — and choosing a mode did nothing at all.
+
 At load time the view asks the device which backends exist:
 
 | Probe result | What the page shows |
@@ -112,6 +121,10 @@ engine of its own:
   green blue") instead of being assumed to be RGB.
 * **Fan**: `/sys/class/hwmon/<n>/` — `pwm1` and `pwm1_enable`.
 * **Thermal**: `/sys/class/thermal/thermal_zone*/temp` and hwmon `temp*_input`.
+  Channels the driver has flagged as faulty (`temp*_fault` non-zero) are
+  **skipped**: an unconnected thermal diode reads the top of its range — the
+  NCT7802's second channel reads 127.875 °C — and taken at face value that pins
+  the fan at full speed.
 
 ### hwmon devices are matched by name, never by index
 

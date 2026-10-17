@@ -210,8 +210,16 @@ kernel_auto_available() {
 }
 
 # Hottest readable sensor, in whole degrees Celsius.
+#
+# A channel the driver has flagged as faulty is skipped rather than believed.
+# Its input register still reads whatever the chip left in it, and on an
+# unconnected thermal diode that is the top of its range: the NCT7802 on the
+# Gemtek W1700K reports 127.875 °C on its second channel with temp2_fault set,
+# which is hot enough to trip `overtemp` and pin the fan at full speed for
+# ever. The fault attribute is the driver's own verdict on the channel, so it
+# is what decides; a driver that publishes none keeps the old behaviour.
 max_temp_c() {
-	local d f t v max=''
+	local d f t v max='' chan
 
 	for d in "$THERMAL_ROOT"/thermal_zone*; do
 		[ -r "$d/temp" ] || continue
@@ -225,6 +233,17 @@ max_temp_c() {
 	for d in "$HWMON_ROOT"/hwmon*; do
 		for f in "$d"/temp*_input; do
 			[ -r "$f" ] || continue
+
+			# temp2_input -> temp2, so the channel's own fault flag can be
+			# read alongside its reading.
+			chan="${f##*/}"
+			chan="${chan%_input}"
+
+			case "$(cat "$d/${chan}_fault" 2>/dev/null)" in
+				0|'') ;;
+				*) continue ;;
+			esac
+
 			t="$(cat "$f" 2>/dev/null)"
 			case "$t" in ''|*[!0-9-]*) continue ;; esac
 
