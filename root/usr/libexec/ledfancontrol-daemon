@@ -121,7 +121,10 @@ led_write_colour() {
 apply_led() {
 	local dir maxb level
 
-	led_state='off'
+	case "$led_mode" in
+		auto) led_state='auto' ;;
+		*)    led_state='off' ;;
+	esac
 
 	[ -n "$led_device" ] || return 0
 
@@ -144,7 +147,29 @@ apply_led() {
 
 	if [ "$led_mode" = 'auto' ]; then
 		led_state='auto'
-		# Leave the LED under kernel control - do not touch trigger/brightness
+		# Restore kernel control: clear daemon's trigger/brightness settings.
+		# We don't know the kernel's original trigger, so we try to pick a sensible
+		# default: the first trigger listed for this LED that is not 'none'.
+		# This is a heuristic for boards like airoha/an7581 where the system RGB
+		# LED is normally driven by a kernel trigger.
+		if [ -r "$dir/trigger" ]; then
+			# Get list of available triggers, strip the bracketed current one
+			triggers=$(cat "$dir/trigger")
+			# Pick first trigger name that is not 'none' and not bracketed
+			first=$(echo "$triggers" | awk '{for(i=1;i<=NF;i++) if($i!~/\[.*\]/ && $i!="none") {print $i; exit}}')
+			if [ -z "$first" ]; then
+				# Fallback to first word
+				first=$(echo "$triggers" | awk '{print $1}')
+			fi
+			[ -n "$first" ] && echo "$first" > "$dir/trigger" 2>/dev/null
+		fi
+		# Restore brightness to max so a trigger can actually show
+		if [ -r "$dir/max_brightness" ]; then
+			maxb=$(cat "$dir/max_brightness")
+			case "$maxb" in ''|*[!0-9]*) maxb=255 ;; esac
+			[ "$maxb" -gt 0 ] || maxb=255
+			echo "$maxb" > "$dir/brightness" 2>/dev/null
+		fi
 		return 0
 	fi
 

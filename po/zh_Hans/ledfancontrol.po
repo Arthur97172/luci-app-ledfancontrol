@@ -312,3 +312,7 @@ msgstr "手动目标转速"
 #, javascript-format
 msgid "Failed to apply the settings: %s"
 msgstr "应用设置失败：%s"
+
+#: htdocs/luci-static/resources/ledfancontrol/backend.js:318
+msgid "Automatic (kernel default)"
+msgstr "自动（内核默认）"
