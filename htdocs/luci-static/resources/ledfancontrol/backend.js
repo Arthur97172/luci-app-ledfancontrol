@@ -346,13 +346,18 @@ function buildSysfs(caps) {
 		 * controllable, so percent is what is offered.
 		 *
 		 * min doubles as the floor: the daemon clamps both modes to it, so a
-		 * curve can never stop the fan, and neither can a manual setting.
+		 * curve can never stop the fan, and neither can a manual setting. It
+		 * starts at 10% rather than 20% so that a fan happy below a fifth of
+		 * its range can be set there - but it is a real floor, not a
+		 * suggestion, so choosing 10 lowers the curve's bottom and the manual
+		 * minimum with it, and a fan that stalls below some duty will stall
+		 * here too. The status box reports the duty actually written.
 		 */
 		fan: fans.length ? {
 			minKey: 'min_pwm',
 			manualKey: 'manual_pwm',
 			unit: '%',
-			min: 20,
+			min: 10,
 			max: 100,
 			step: 10,
 			defaultMin: 30,
