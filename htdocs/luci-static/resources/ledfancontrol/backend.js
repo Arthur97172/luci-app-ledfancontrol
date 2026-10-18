@@ -309,13 +309,13 @@ function buildSysfs(caps) {
 		fanModeKey:    'mode',
 
 		/*
-		 * There is no `auto` here. Following the WAN link state is the vendor
-		 * daemon's behaviour, built on its own hotplug scripts; the kernel's
-		 * equivalent is a netdev trigger, which is a different feature with
-		 * different settings, and pretending the two are the same mode would
-		 * be a lie in the interface.
+		 * Auto mode means leaving the LED under kernel control - no trigger or
+		 * brightness is written by this daemon. That is the sensible default for
+		 * indicator LEDs on boards like airoha/an7581 where the kernel already
+		 * drives the system RGB LED with its own triggers.
 		 */
 		ledModes: [
+			{ value: 'auto',   label: _('Automatic (kernel default)') },
 			{ value: 'off',    label: _('Off') },
 			{ value: 'manual', label: _('Manual') }
 		],

@@ -215,7 +215,7 @@ The generic backend reads `/etc/config/ledfancontrol`:
 ```uci
 config led 'led'
 	option device ''            # a name under /sys/class/leds/, empty = leave it alone
-	option mode 'off'           # off | manual
+	option mode 'auto'          # auto | off | manual
 	option effect 'on'          # on | blink
 	option color 'blue'         # only where the LED has multi_intensity
 	option brightness '100'

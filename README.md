@@ -181,7 +181,7 @@ config factory_fan 'fan'
 ```uci
 config led 'led'
 	option device ''            # /sys/class/leds/ 下的名字，空 = 不管灯
-	option mode 'off'           # off | manual
+	option mode 'auto'          # auto | off | manual
 	option effect 'on'          # on | blink
 	option color 'blue'         # 仅当该 LED 支持 multi_intensity
 	option brightness '100'

@@ -47,7 +47,7 @@ EOF
 [ -f /etc/config/ledfancontrol ] || cat > /etc/config/ledfancontrol <<'EOF'
 	config led 'led'
 		option device ''
-		option mode 'off'
+		option mode 'auto'
 		option effect 'on'
 		option color 'blue'
 		option brightness '100'

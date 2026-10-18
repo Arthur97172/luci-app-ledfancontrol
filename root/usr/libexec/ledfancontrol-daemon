@@ -63,7 +63,7 @@ HYSTERESIS=3
 config_load "$CONF"
 
 config_get led_device   led device     ''
-config_get led_mode     led mode       'off'
+config_get led_mode     led mode       'auto'
 config_get led_effect   led effect     'on'
 config_get led_color    led color      'blue'
 config_get led_bright   led brightness '100'
@@ -139,6 +139,12 @@ apply_led() {
 	if [ "$led_mode" = 'off' ]; then
 		echo none > "$dir/trigger" 2>/dev/null
 		echo 0 > "$dir/brightness" 2>/dev/null
+		return 0
+	fi
+
+	if [ "$led_mode" = 'auto' ]; then
+		led_state='auto'
+		# Leave the LED under kernel control - do not touch trigger/brightness
 		return 0
 	fi
 
