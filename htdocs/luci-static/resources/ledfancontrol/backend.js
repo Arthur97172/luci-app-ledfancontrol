@@ -308,6 +308,11 @@ function buildSysfs(caps) {
 		brightnessKey: 'brightness',
 		fanModeKey:    'mode',
 
+		ledModeKeyTemplate:    '%s_mode',
+		ledColorKeyTemplate:   '%s_color',
+		ledEffectKeyTemplate:  '%s_effect',
+		brightnessKeyTemplate: '%s_brightness',
+
 		/*
 		 * Auto mode means leaving the LED under kernel control - no trigger or
 		 * brightness is written by this daemon. That is the sensible default for

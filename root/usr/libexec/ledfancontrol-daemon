@@ -63,10 +63,16 @@ HYSTERESIS=3
 config_load "$CONF"
 
 config_get led_device   led device     ''
-config_get led_mode     led mode       'auto'
-config_get led_effect   led effect     'on'
-config_get led_color    led color      'blue'
-config_get led_bright   led brightness '100'
+# Per-device key names, fall back to legacy global keys
+dev_key_mode=$(printf '%s_mode' "$led_device")
+dev_key_bright=$(printf '%s_brightness' "$led_device")
+dev_key_effect=$(printf '%s_effect' "$led_device")
+dev_key_color=$(printf '%s_color' "$led_device")
+
+config_get led_mode     led "$dev_key_mode" 'auto'
+config_get led_effect   led "$dev_key_effect" 'on'
+config_get led_color    led "$dev_key_color" 'blue'
+config_get led_bright   led "$dev_key_bright" '100'
 
 config_get fan_mode     fan mode       'auto'
 config_get fan_hwmon    fan hwmon      'pwmfan'

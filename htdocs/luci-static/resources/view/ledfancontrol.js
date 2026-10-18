@@ -240,6 +240,13 @@ return view.extend({
 
 				o.default = '';
 				o.rmempty = false;
+				o.onchange = function(ev) {
+					var sec = this.section;
+					if (sec && sec.form) {
+						// Force reload of dependent options to pick up per-device values
+						sec.form.reset();
+					}
+				};
 			}
 
 			o = s.option(form.ListValue, desc.ledModeKey, _('Control mode'));
@@ -248,6 +255,18 @@ return view.extend({
 			});
 			o.default = desc.ledModes[0].value;
 			o.rmempty = false;
+			if (desc.ledModeKeyTemplate) {
+				o.load = function(section_id) {
+					var dev = uci.get(desc.config, section_id, desc.ledDeviceKey) || '';
+					var key = dev ? String.format(desc.ledModeKeyTemplate, dev) : desc.ledModeKey;
+					return uci.get(desc.config, section_id, key);
+				};
+				o.save = function(section_id, value) {
+					var dev = uci.get(desc.config, section_id, desc.ledDeviceKey) || '';
+					var key = dev ? String.format(desc.ledModeKeyTemplate, dev) : desc.ledModeKey;
+					uci.set(desc.config, section_id, key, value);
+				};
+			}
 
 			/*
 			 * A colour only means something for the effects that actually use
@@ -266,6 +285,18 @@ return view.extend({
 					o.value(c.value, c.label);
 				});
 				o.default = desc.colours[0].value;
+				if (desc.ledColorKeyTemplate) {
+					o.load = function(section_id) {
+						var dev = uci.get(desc.config, section_id, desc.ledDeviceKey) || '';
+						var key = dev ? String.format(desc.ledColorKeyTemplate, dev) : desc.ledColorKey;
+						return uci.get(desc.config, section_id, key);
+					};
+					o.save = function(section_id, value) {
+						var dev = uci.get(desc.config, section_id, desc.ledDeviceKey) || '';
+						var key = dev ? String.format(desc.ledColorKeyTemplate, dev) : desc.ledColorKey;
+						uci.set(desc.config, section_id, key, value);
+					};
+				}
 				desc.effects.forEach(function(e) {
 					if (!e.colour)
 						return;
@@ -303,6 +334,18 @@ return view.extend({
 			});
 			o.default = desc.effects.length ? desc.effects[0].value : null;
 			o.depends(desc.ledModeKey, 'manual');
+			if (desc.ledEffectKeyTemplate) {
+				o.load = function(section_id) {
+					var dev = uci.get(desc.config, section_id, desc.ledDeviceKey) || '';
+					var key = dev ? String.format(desc.ledEffectKeyTemplate, dev) : desc.ledEffectKey;
+					return uci.get(desc.config, section_id, key);
+				};
+				o.save = function(section_id, value) {
+					var dev = uci.get(desc.config, section_id, desc.ledDeviceKey) || '';
+					var key = dev ? String.format(desc.ledEffectKeyTemplate, dev) : desc.ledEffectKey;
+					uci.set(desc.config, section_id, key, value);
+				};
+			}
 
 			/* Retained while the LED is not in manual mode - see above. */
 			o.retain = true;
@@ -312,6 +355,18 @@ return view.extend({
 				o.value(String(v), v + '%');
 			o.default = String(desc.brightness.default);
 			o.rmempty = false;
+			if (desc.brightnessKeyTemplate) {
+				o.load = function(section_id) {
+					var dev = uci.get(desc.config, section_id, desc.ledDeviceKey) || '';
+					var key = dev ? String.format(desc.brightnessKeyTemplate, dev) : desc.brightnessKey;
+					return uci.get(desc.config, section_id, key);
+				};
+				o.save = function(section_id, value) {
+					var dev = uci.get(desc.config, section_id, desc.ledDeviceKey) || '';
+					var key = dev ? String.format(desc.brightnessKeyTemplate, dev) : desc.brightnessKey;
+					uci.set(desc.config, section_id, key, value);
+				};
+			}
 		}
 
 		/* ---------------------------------------------------------------- */
