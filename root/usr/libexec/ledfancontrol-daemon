@@ -63,10 +63,39 @@ HYSTERESIS=3
 config_load "$CONF"
 
 config_get led_device   led device     ''
-config_get led_mode     led mode       'auto'
-config_get led_effect   led effect     'on'
-config_get led_color    led color      'blue'
-config_get led_bright   led brightness '100'
+
+# The LED settings are stored per LED: the option holding one of them is the
+# LED's name followed by the plain option name, so that choosing a different
+# entry in the page's LED list shows that LED's own mode, effect, colour and
+# brightness instead of one set shared by all of them.
+#
+# libuci accepts only [A-Za-z0-9_] in an option name, and every LED name the
+# kernel publishes on the reference board has a colon or a hyphen in it
+# (blue:status, green:lan-3, mt76-phy0), so the name is transliterated first.
+# This has to be the same rule the page applies - see san() in
+# view/ledfancontrol.js - or the daemon would read options the page never wrote.
+#
+# printf is used without a trailing newline on purpose: tr -c complements its
+# set, so a newline would come back as a trailing underscore.
+if [ -n "$led_device" ]; then
+	led_prefix="$(printf '%s' "$led_device" | tr -c 'A-Za-z0-9_' '_')_"
+else
+	led_prefix=''
+fi
+
+# The plain, unprefixed names are still read, as the fallback: a configuration
+# written before the settings became per-LED keeps working, and an LED the user
+# has not given settings of its own inherits the global ones. The page reads the
+# same chain, so what it shows is what is applied.
+config_get led_mode_def     led mode       'auto'
+config_get led_effect_def   led effect     'on'
+config_get led_color_def    led color      'blue'
+config_get led_bright_def   led brightness '100'
+
+config_get led_mode     led "${led_prefix}mode"       "$led_mode_def"
+config_get led_effect   led "${led_prefix}effect"     "$led_effect_def"
+config_get led_color    led "${led_prefix}color"      "$led_color_def"
+config_get led_bright   led "${led_prefix}brightness" "$led_bright_def"
 
 config_get fan_mode     fan mode       'auto'
 config_get fan_hwmon    fan hwmon      'pwmfan'

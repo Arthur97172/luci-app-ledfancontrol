@@ -39,6 +39,7 @@
  *   ...Key                    the option each setting is stored under
  *   ledModes, fanModes        [{ value, label }] - the vocabularies, per backend
  *   ledDeviceKey, ledDevices  which /sys/class/leds entry to drive (sysfs only)
+ *   ledKeyTemplate            how a per-LED option name is built (sysfs only)
  *   hwmonKey, fanDevices      which hwmon device is the fan (sysfs only)
  *   colours, effects          [{ value, label, colour? }]
  *   brightness                { min, max, step, default }
@@ -327,6 +328,26 @@ function buildSysfs(caps) {
 
 		ledDeviceKey: 'device',
 		ledDevices: leds,
+
+		/*
+		 * The LED settings are stored per LED rather than once for the whole
+		 * board: picking a different entry in the device list shows that LED's
+		 * own mode, effect, colour and brightness, and saving one LED leaves
+		 * every other LED's settings alone.
+		 *
+		 * The option name is built by formatting this with the transliterated
+		 * LED name and the plain option name - `blue_status` + `mode`. The
+		 * transliteration is not cosmetic: libuci accepts only [A-Za-z0-9_] in
+		 * an option name and rejects the rest with "invalid character in name
+		 * field", and every name the kernel publishes on the reference board
+		 * has a colon or a hyphen in it (blue:status, green:lan-3, mt76-phy0).
+		 * The view does the transliterating; the daemon applies the same rule
+		 * with tr(1) when it reads the settings back.
+		 *
+		 * Left unset by the other descriptors, which have one LED or none and
+		 * so store their settings under the plain names.
+		 */
+		ledKeyTemplate: '%s_%s',
 
 		hwmonKey: fans.length ? 'hwmon' : null,
 		fanDevices: fans,

@@ -67,6 +67,12 @@ rpcd 插件在探测时把 `factory-pwm` 排在前面，`/etc/init.d/ledfancontr
 于是在通用后端的板子上「控制模式」被写进 `fan_mode`，而守护进程读的是
 `mode`——切换模式完全不起作用。
 
+通用后端的 LED 设置还多一层：它们是**按灯存的**，不是整机一份。描述符里的
+`ledKeyTemplate`（`'%s_%s'`）说明选项名由「灯名 + 普通选项名」拼成，视图据此
+把「控制模式」「手动效果」「亮度」「手动颜色」四个字段绑到当前选中的那颗灯
+上——换一颗灯，四个字段就换成那颗灯的值；保存一颗灯，其他灯的设置原样不动。
+原厂后端没有灯可选（它自己独占 PWM 通道），不带这个字段，行为与以前完全一致。
+
 启动时由 rpcd 插件探测本机后端：
 
 | 探测结果 | 界面表现 |
@@ -180,11 +186,17 @@ config factory_fan 'fan'
 
 ```uci
 config led 'led'
-	option device ''            # /sys/class/leds/ 下的名字，空 = 不管灯
-	option mode 'auto'          # auto | off | manual
-	option effect 'on'          # on | blink
-	option color 'blue'         # 仅当该 LED 支持 multi_intensity
-	option brightness '100'
+	option device 'blue:status'        # 当前驱动的那颗灯，空 = 不管灯
+
+	option blue_status_mode 'off'      # 这颗灯自己的四项设置
+	option blue_status_effect 'on'
+	option blue_status_color 'blue'    # 仅当该 LED 支持 multi_intensity
+	option blue_status_brightness '40'
+
+	option green_status_mode 'auto'    # 另一颗灯，互不影响
+	option green_status_brightness '100'
+
+	option mode 'auto'                 # 旧的全局值，作为回退保留
 
 config fan 'fan'
 	option mode 'auto'          # auto | manual
@@ -198,6 +210,32 @@ config fan 'fan'
 
 `device` 默认为空：守护进程于是什么都不碰，而不是去猜用户指的是哪颗灯。
 界面会把内核实际有的名字列出来让用户选。
+
+**LED 的设置按灯存。** 选项名是「灯名 + `_` + 选项名」，灯名先做一次转写：
+把 `[A-Za-z0-9_]` 以外的字符全部换成 `_`。这一步不是美观问题——libuci 的
+名字语法只允许 `[A-Za-z0-9_]`，`blue:status_mode` 会被它以
+`Parse error (invalid character in name field)` 直接拒绝，而本机内核给出的
+每一个灯名都带冒号或连字符（`blue:status`、`green:lan-3`、`mt76-phy0`）。
+所以：
+
+| 灯名 | 选项前缀 |
+| --- | --- |
+| `blue:status` | `blue_status` |
+| `green:lan-3` | `green_lan_3` |
+| `mt76-phy0` | `mt76_phy0` |
+
+**值不受限制**，所以 `option device 'blue:status'` 一直是可以的，只有**名字**
+需要转写。守护进程用 `tr -c 'A-Za-z0-9_' '_'` 做同一件事，两边规则必须一致，
+否则守护进程会去读一个界面从没写过的选项——表现就是设置被忽略。
+
+读取顺序是三级回退：
+
+1. `<灯名>_mode` —— 界面按灯写入的值；
+2. `mode` —— 这次改动之前的全局值，仍然生效；
+3. `auto` —— 内置默认。
+
+所以旧配置不需要迁移，而一颗还没单独设置过的灯会**继承**全局值——界面显示
+的和守护进程实际应用的因此是同一个值。
 
 ## 灯效（原厂后端）
 

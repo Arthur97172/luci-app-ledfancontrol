@@ -79,6 +79,15 @@ and the view only looks them up. It used to spell the vendor's set out for both
 backends, so on a sysfs board the mode selector wrote `fan_mode` while the
 daemon read `mode` — and choosing a mode did nothing at all.
 
+The generic backend's LED settings go one step further: they are stored **per
+LED**, not once for the board. The descriptor's `ledKeyTemplate` (`'%s_%s'`)
+says an option name is built from the LED's name and the plain option name, and
+the view binds the four fields — control mode, manual effect, brightness and
+manual colour — to whichever LED is selected: pick another LED and the four
+fields show that LED's values, and saving one LED leaves every other LED's
+settings untouched. The vendor backend has no LED to pick (it owns its PWM
+channels outright) and carries no template, so its behaviour is unchanged.
+
 At load time the view asks the device which backends exist:
 
 | Probe result | What the page shows |
@@ -214,11 +223,17 @@ The generic backend reads `/etc/config/ledfancontrol`:
 
 ```uci
 config led 'led'
-	option device ''            # a name under /sys/class/leds/, empty = leave it alone
-	option mode 'auto'          # auto | off | manual
-	option effect 'on'          # on | blink
-	option color 'blue'         # only where the LED has multi_intensity
-	option brightness '100'
+	option device 'blue:status'        # the LED being driven, empty = leave it alone
+
+	option blue_status_mode 'off'      # that LED's own four settings
+	option blue_status_effect 'on'
+	option blue_status_color 'blue'    # only where the LED has multi_intensity
+	option blue_status_brightness '40'
+
+	option green_status_mode 'auto'    # another LED, unaffected by the above
+	option green_status_brightness '100'
+
+	option mode 'auto'                 # the old global value, kept as a fallback
 
 config fan 'fan'
 	option mode 'auto'          # auto | manual
@@ -233,6 +248,36 @@ config fan 'fan'
 `device` defaults to empty: the daemon then touches nothing rather than guessing
 which LED is meant. The page lists the names the kernel actually has, for the
 user to choose from.
+
+**The LED settings are stored per LED.** An option name is the LED's name plus
+`_` plus the plain option name, and the LED name is transliterated first: every
+character outside `[A-Za-z0-9_]` becomes `_`. That step is not cosmetic — libuci's
+name grammar allows only `[A-Za-z0-9_]`, and it answers `blue:status_mode` with
+`Parse error (invalid character in name field)`, while every name the kernel
+publishes on the reference board has a colon or a hyphen in it (`blue:status`,
+`green:lan-3`, `mt76-phy0`). So:
+
+| LED name | option prefix |
+| --- | --- |
+| `blue:status` | `blue_status` |
+| `green:lan-3` | `green_lan_3` |
+| `mt76-phy0` | `mt76_phy0` |
+
+**Values are unrestricted**, which is why `option device 'blue:status'` has
+always worked; only *names* need transliterating. The daemon does the same thing
+with `tr -c 'A-Za-z0-9_' '_'`, and the two rules must not drift: a name spelled
+differently would leave the daemon reading an option the page never wrote, which
+looks exactly like the setting being ignored.
+
+Reads walk a three-step fallback:
+
+1. `<led>_mode` — what the page wrote for this LED;
+2. `mode` — the global value from before this change, still honoured;
+3. `auto` — the built-in default.
+
+So an existing configuration needs no migration, and an LED that has not been
+given settings of its own **inherits** the global ones — which is why the value
+the page shows and the value the daemon applies are the same one.
 
 ## LED effects (vendor backend)
 

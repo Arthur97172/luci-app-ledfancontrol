@@ -25,6 +25,13 @@
  * rather than by writing values out: a board with a multicolour LED gets a
  * colour list and a board without one does not, without a single conditional
  * here that mentions LEDs.
+ *
+ * One thing here is more than rendering: the four LED settings are stored per
+ * LED, so that configuring one indicator does not overwrite another's settings,
+ * and the fields have to follow the LED chosen in the dropdown. CBI has no
+ * built-in way to do that - an option's name is fixed - so the four options get
+ * their load/write/remove replaced with ones that resolve the name from the
+ * selected LED. See ledBind() and ledSwitch().
  */
 
 var STATUS_INTERVAL = 3;
@@ -164,9 +171,229 @@ function renderUnsupported(available) {
 	]);
 }
 
+/* ------------------------------------------------------------------------ */
+/* Per-LED settings                                                          */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * The LED whose settings the fields currently show, and the options bound to
+ * it.
+ *
+ * Module state rather than a property of the view because the option hooks
+ * below are closures created while the form is built, and they have to agree
+ * with the dropdown about which LED is being edited. load() resets it, so a
+ * reload starts from what is actually in the configuration.
+ */
+var ledState = {
+	device: '',
+	deviceOpt: null,
+	options: []
+};
+
+/*
+ * Transliterate a kernel LED name into something libuci accepts as an option
+ * name.
+ *
+ * libuci's name grammar is [A-Za-z0-9_] and nothing else. It answers
+ * `blue:status_mode` with "Parse error (invalid character in name field)", and
+ * hyphens and dots are refused the same way - only *values* may contain them.
+ * Every LED name the kernel publishes on the reference board has a colon or a
+ * hyphen in it (blue:status, green:lan-3, mt76-phy0), so the name has to be
+ * rewritten before it can be part of an option name.
+ *
+ * The daemon applies exactly the same rule with tr(1) when it reads these
+ * settings back, and the two must not drift: a name spelled differently here
+ * would leave the daemon reading an option the page never wrote, which looks
+ * exactly like the setting being ignored.
+ */
+function san(name) {
+	return String(name === null || name === undefined ? '' : name)
+		.replace(/[^A-Za-z0-9_]/g, '_');
+}
+
+/*
+ * The UCI option one LED setting is stored under, for the LED currently chosen
+ * in the dropdown.
+ *
+ * With no LED chosen the plain name is used. That is what the configuration
+ * meant before the settings became per-LED, and it is what the daemon falls
+ * back to, so a board whose LED has not been picked yet behaves as it always
+ * did.
+ */
+function ledKey(desc, base) {
+	if (!desc.ledKeyTemplate || !ledState.device)
+		return base;
+
+	return desc.ledKeyTemplate.format(san(ledState.device), base);
+}
+
+/*
+ * Read one LED setting for the LED currently chosen, walking the same chain the
+ * daemon walks: this LED's own value, then the plain one the setting used to
+ * live under, then nothing - in which case the option's default fills the
+ * widget.
+ *
+ * The middle step is what keeps the page honest. Without it an LED that has no
+ * settings of its own yet would display the built-in default while the daemon
+ * applied the older global setting, so the page would be showing a value that
+ * is not in force.
+ */
+function ledRead(desc, sid, base) {
+	var v = uci.get(desc.config, sid, ledKey(desc, base));
+
+	if (v === null || v === undefined || v === '')
+		v = uci.get(desc.config, sid, base);
+
+	return (v === null || v === undefined || v === '') ? null : v;
+}
+
+/*
+ * Put one LED setting into its widget.
+ *
+ * CBI offers no way to re-read a single option from the configuration:
+ * render() draws the value cached at load time, and Map.reset() only re-renders
+ * - it does not re-read either. So the dropdown has to set the widgets itself.
+ * getUIElement() is the supported way in, and it is the same widget formvalue()
+ * reads, so a save afterwards sees the new value.
+ */
+function ledShow(desc, sid, entry) {
+	var elem = entry.opt.getUIElement(sid);
+	var v;
+
+	if (!elem)
+		return;
+
+	v = ledRead(desc, sid, entry.base);
+
+	/*
+	 * An LED with neither a value of its own nor a global one to inherit gets
+	 * the option's default - and that has to be applied here rather than left
+	 * to CBI. CBI fills a widget from the default only while rendering, and
+	 * this widget was rendered for a different LED; leaving it alone would put
+	 * the previous LED's value on screen under the new LED's name.
+	 */
+	if (v === null)
+		v = entry.fallback;
+
+	if (v !== null && v !== undefined)
+		elem.setValue(v);
+
+	/*
+	 * A stored value the option does not offer - a colour this board can no
+	 * longer mix, or a leftover from another backend - leaves the list empty,
+	 * because assigning a value with no matching entry clears it. An empty
+	 * value is not a setting this page accepts and would make the next save
+	 * fail with "must not be empty", so the default stands in instead.
+	 */
+	if (!elem.getValue() && entry.fallback !== null && entry.fallback !== undefined)
+		elem.setValue(entry.fallback);
+
+	entry.shown = elem.getValue();
+}
+
+/*
+ * Move the four settings fields from one LED to another.
+ *
+ * Anything edited but not yet saved is first written into the changeset under
+ * the LED it was edited on. Choosing a different LED is not a save, so without
+ * this the edit would simply vanish - which is the same class of bug as the one
+ * where saving one LED clobbered another's settings.
+ *
+ * It goes into the changeset rather than to the configuration file, so it is
+ * committed or discarded along with the rest of the page. And because uci.get()
+ * merges the changeset over the stored values, choosing that LED again brings
+ * the unsaved edit back with it.
+ */
+function ledSwitch(desc, sid, device) {
+	var prev = ledState.device;
+
+	if (prev && prev !== device) {
+		ledState.options.forEach(function(entry) {
+			var elem = entry.opt.getUIElement(sid);
+			var v = elem ? elem.getValue() : null;
+
+			if (v === null || v === '' || v === entry.shown)
+				return;
+
+			uci.set(desc.config, sid,
+				desc.ledKeyTemplate.format(san(prev), entry.base), v);
+		});
+	}
+
+	ledState.device = device || '';
+
+	ledState.options.forEach(function(entry) {
+		ledShow(desc, sid, entry);
+	});
+}
+
+/*
+ * Bind one of the four LED settings to the LED chosen in the dropdown instead
+ * of to a fixed option name.
+ *
+ * CBI resolves an option's name at load, write and remove time and nowhere
+ * else, so replacing those three methods is all it takes to move an option
+ * between keys. Its widget, its DOM id and its depends() wiring stay where they
+ * are, which is what keeps this a single short section rather than a block of
+ * fields for every LED on the board.
+ *
+ * There is no per-option `save` hook in CBI - `save` exists only on the map -
+ * which is what an earlier attempt at this got wrong, and why the fields used
+ * to come back as the default after a save.
+ *
+ * A descriptor that stores its settings once for the whole board - the vendor
+ * daemon, which owns its channels outright and has no LED list - names no
+ * template, and is left exactly as it was.
+ */
+function ledBind(desc, o, base) {
+	if (!desc.ledKeyTemplate)
+		return;
+
+	/*
+	 * CBI treats "the widget holds the option's default" as "nothing was
+	 * chosen": parse() sends an option whose value equals its default straight
+	 * to remove(), for any option that is rmempty - and rmempty is true by
+	 * default, which the colour and effect options are. Removing the value is
+	 * the right answer for a setting that has one home, but not here: it would
+	 * make choosing the default for an LED delete that LED's setting, so the
+	 * LED would fall back to the global one and quietly apply a different
+	 * value than the one on screen.
+	 *
+	 * With rmempty off, a value the user chose is stored even when it happens
+	 * to equal the default, and the LED stops inheriting. The value can never
+	 * be empty for these options - ledShow() puts the default in rather than
+	 * leaving the list blank - so the "must not be empty" rejection that
+	 * rmempty also guards against cannot fire.
+	 */
+	o.rmempty = false;
+
+	o.load = function(sid) {
+		return ledRead(desc, sid, base);
+	};
+
+	o.write = function(sid, val) {
+		return this.map.data.set(desc.config, sid, ledKey(desc, base), val);
+	};
+
+	o.remove = function(sid) {
+		this.map.data.unset(desc.config, sid, ledKey(desc, base));
+	};
+
+	ledState.options.push({
+		base: base,
+		opt: o,
+		fallback: o.default,
+		shown: null
+	});
+}
+
 return view.extend({
 	load: function() {
 		var self = this;
+
+		ledState.device = '';
+		ledState.deviceOpt = null;
+		ledState.options = [];
 
 		return backend.detect().then(function(det) {
 			self.det = det;
@@ -174,7 +401,16 @@ return view.extend({
 			if (!det.descriptor.config)
 				return;
 
-			return uci.load(det.descriptor.config);
+			return uci.load(det.descriptor.config).then(function() {
+				/*
+				 * Which LED the settings belong to has to be known before the
+				 * form loads, because that is what the options read their value
+				 * from - see ledBind().
+				 */
+				if (det.descriptor.ledDeviceKey)
+					ledState.device = uci.get(det.descriptor.config, 'led',
+						det.descriptor.ledDeviceKey) || '';
+			});
 		});
 	},
 
@@ -240,6 +476,22 @@ return view.extend({
 
 				o.default = '';
 				o.rmempty = false;
+
+				/*
+				 * Choosing an LED chooses whose settings the three fields below
+				 * show, so the choice has to be acted on rather than just
+				 * stored. CBI hands onchange the section id and the new value;
+				 * see ledSwitch() for what it does with them.
+				 */
+				if (desc.ledKeyTemplate) {
+					o.onchange = function(ev, sid, value) {
+						ledSwitch(desc, sid, value);
+					};
+
+					/* Kept so that render() can ask the rendered dropdown which
+					 * LED it ended up showing; see the note there. */
+					ledState.deviceOpt = o;
+				}
 			}
 
 			o = s.option(form.ListValue, desc.ledModeKey, _('Control mode'));
@@ -248,6 +500,7 @@ return view.extend({
 			});
 			o.default = desc.ledModes[0].value;
 			o.rmempty = false;
+			ledBind(desc, o, desc.ledModeKey);
 
 			/*
 			 * A colour only means something for the effects that actually use
@@ -295,6 +548,7 @@ return view.extend({
 				 * page used to report.
 				 */
 				o.retain = true;
+				ledBind(desc, o, desc.ledColorKey);
 			}
 
 			o = s.option(form.ListValue, desc.ledEffectKey, _('Manual effect'));
@@ -306,12 +560,14 @@ return view.extend({
 
 			/* Retained while the LED is not in manual mode - see above. */
 			o.retain = true;
+			ledBind(desc, o, desc.ledEffectKey);
 
 			o = s.option(form.ListValue, desc.brightnessKey, _('Brightness'));
 			for (v = desc.brightness.min; v <= desc.brightness.max; v += desc.brightness.step)
 				o.value(String(v), v + '%');
 			o.default = String(desc.brightness.default);
 			o.rmempty = false;
+			ledBind(desc, o, desc.brightnessKey);
 		}
 
 		/* ---------------------------------------------------------------- */
@@ -437,6 +693,34 @@ return view.extend({
 
 		return m.render().then(function(node) {
 			node.insertBefore(status, node.firstChild);
+
+			/*
+			 * A <select> with no entry marked selected shows its first one, so
+			 * the LED on screen is not always the LED the configuration names:
+			 * a configuration whose `device` is still empty - a fresh install -
+			 * draws the first LED of the list. Take the device from the dropdown
+			 * rather than from the configuration, so that the settings shown are
+			 * always the ones belonging to the LED shown.
+			 */
+			var devElem = ledState.deviceOpt && ledState.deviceOpt.getUIElement('led');
+
+			if (devElem && devElem.getValue())
+				ledState.device = devElem.getValue();
+
+			/*
+			 * Then settle each field on what it should display: the stored value
+			 * for this LED, or the option default where there is none. Drawing
+			 * already did this from the values load() read, but load() ran
+			 * against the device named in the configuration, which is the value
+			 * just replaced - and drawing leaves a field blank when the stored
+			 * value is not one the option offers. Both are corrected here.
+			 *
+			 * It also records what each field settled on; ledSwitch() compares
+			 * against that to tell an edit from an untouched field.
+			 */
+			ledState.options.forEach(function(entry) {
+				ledShow(desc, 'led', entry);
+			});
 
 			L.Poll.add(function() {
 				return backend.status().then(function(st) {
