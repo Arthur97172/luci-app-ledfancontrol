@@ -240,7 +240,7 @@ config fan 'fan'
 	option hwmon 'pwmfan'       # the driver's name, not an hwmon index
 	option min_pwm '30'         # the floor, applied in both modes
 	option manual_pwm '60'      # the manual target
-	option min_temp '40'        # where the curve starts
+	option min_temp '50'        # where the curve starts
 	option max_temp '90'        # where the curve reaches full speed
 	option overtemp '100'       # emergency full speed
 ```

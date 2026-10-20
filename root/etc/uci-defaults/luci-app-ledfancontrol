@@ -57,7 +57,7 @@ EOF
 		option hwmon 'pwmfan'
 		option min_pwm '30'
 		option manual_pwm '60'
-		option min_temp '40'
+		option min_temp '50'
 		option max_temp '90'
 		option overtemp '100'
 EOF

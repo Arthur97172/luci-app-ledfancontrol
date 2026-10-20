@@ -101,7 +101,7 @@ config_get fan_mode     fan mode       'auto'
 config_get fan_hwmon    fan hwmon      'pwmfan'
 config_get fan_min_pwm  fan min_pwm    '30'
 config_get fan_man_pwm  fan manual_pwm '60'
-config_get fan_min_temp fan min_temp   '40'
+config_get fan_min_temp fan min_temp   '50'
 config_get fan_max_temp fan max_temp   '90'
 config_get fan_overtemp fan overtemp   '100'
 

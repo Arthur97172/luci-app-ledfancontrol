@@ -203,7 +203,7 @@ config fan 'fan'
 	option hwmon 'pwmfan'       # 驱动自报的名字，不是 hwmon 序号
 	option min_pwm '30'         # 下限，两种模式都生效
 	option manual_pwm '60'      # 手动模式的目标
-	option min_temp '40'        # 曲线起点
+	option min_temp '50'        # 曲线起点
 	option max_temp '90'        # 曲线满速点
 	option overtemp '100'       # 应急满速
 ```

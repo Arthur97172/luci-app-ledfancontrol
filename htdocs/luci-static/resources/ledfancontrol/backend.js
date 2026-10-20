@@ -396,7 +396,7 @@ function buildSysfs(caps) {
 				key: 'min_temp',
 				label: _('Curve start temperature'),
 				description: _('At or below this temperature the fan runs at the minimum speed.'),
-				min: 20, max: 90, step: 1, default: 40, unit: '°C'
+				min: 20, max: 90, step: 1, default: 50, unit: '°C'
 			},
 			{
 				key: 'max_temp',
