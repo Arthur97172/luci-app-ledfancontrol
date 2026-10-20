@@ -289,6 +289,25 @@ function ledShow(desc, sid, entry) {
 		elem.setValue(entry.fallback);
 
 	entry.shown = elem.getValue();
+
+	/*
+	 * Keep CBI's cached value in step with the widget.
+	 *
+	 * parse() writes an option only when the widget differs from the value CBI
+	 * cached for it, and that cache was filled by load() - which ran for the LED
+	 * the configuration named when the page loaded, not the one now selected.
+	 * Left alone it is the wrong LED's value, and both answers it can give are
+	 * wrong: an edit that happens to equal the old LED's value looks unchanged
+	 * and is never stored, so the field snaps back to the inherited setting on
+	 * the next reload; and an untouched field that merely differs from it looks
+	 * edited and is stored, which quietly stops this LED inheriting the global
+	 * settings at all.
+	 *
+	 * Setting it here makes the cache mean what parse() assumes it means - the
+	 * value stored for what is on screen - so an untouched field compares equal
+	 * and is left alone, and a real edit compares unequal and is written.
+	 */
+	entry.opt.cfgvalue(sid, entry.shown);
 }
 
 /*
