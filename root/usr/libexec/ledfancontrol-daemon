@@ -147,6 +147,23 @@ led_write_colour() {
 	printf '%s\n' "${out# }" > "$dir/multi_intensity" 2>/dev/null
 }
 
+# The percentage the status document reports, derived from the value actually
+# written to `brightness` rather than from the configured one.
+#
+# On a LED whose max_brightness is 1 - which is eight of the nine on the reference
+# board - every configured value from 10% to 100% lands on the same brightness, so
+# echoing the setting back reports a number that means nothing: the page would
+# claim "brightness 40%" for an indicator sitting at full. Reporting what was
+# written is the rule the fan already follows, and it is also what makes a value
+# the LED's own scale rounded off visible instead of silent.
+led_pct() {
+	local level="$1" maxb="$2"
+
+	[ "$maxb" -gt 0 ] || maxb=1
+
+	printf '%s\n' "$(( (level * 100 + maxb / 2) / maxb ))"
+}
+
 apply_led() {
 	local dir maxb level
 
@@ -171,6 +188,7 @@ apply_led() {
 	if [ "$led_mode" = 'off' ]; then
 		echo none > "$dir/trigger" 2>/dev/null
 		echo 0 > "$dir/brightness" 2>/dev/null
+		led_bright_pct=0
 		return 0
 	fi
 
@@ -198,6 +216,7 @@ apply_led() {
 			case "$maxb" in ''|*[!0-9]*) maxb=255 ;; esac
 			[ "$maxb" -gt 0 ] || maxb=255
 			echo "$maxb" > "$dir/brightness" 2>/dev/null
+			led_bright_pct=100
 		fi
 		return 0
 	fi
@@ -226,6 +245,8 @@ apply_led() {
 	[ -w "$dir/multi_intensity" ] && led_write_colour "$dir" "$led_color" "$led_bright"
 
 	echo "$level" > "$dir/brightness" 2>/dev/null
+
+	led_bright_pct="$(led_pct "$level" "$maxb")"
 
 	led_state="${led_color}_${led_effect}"
 	return 0
@@ -349,7 +370,7 @@ write_status() {
 		printf '\t"updated": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 		printf '\t"led": "%s",\n' "$led_state"
 		printf '\t"led_mode": "%s",\n' "$led_mode"
-		printf '\t"brightness_percent": %s,\n' "$led_bright"
+		printf '\t"brightness_percent": %s,\n' "$led_bright_pct"
 		printf '\t"fan_mode": "%s",\n' "$fan_mode"
 		printf '\t"target_pwm": %s,\n' "$target_pwm"
 		printf '\t"fan_pwm_0_255": %s,\n' "$pwm255"
@@ -377,6 +398,13 @@ write_status() {
 # ---------------------------------------------------------------------------
 
 led_state='off'
+
+# The reported brightness. Every path in apply_led() that actually writes
+# `brightness` overwrites this with the LED's effective percentage; the ones that
+# return early because there is no LED to drive leave the configured value, which
+# is what the document has always carried there.
+led_bright_pct="$led_bright"
+
 target_pwm=0
 pwm255=0
 hottest=0

@@ -358,6 +358,15 @@ vendor backend has a tachometer and reports RPM; the generic one has none and
 reports the duty cycle it wrote. Rendering "0 RPM" for a backend that never
 claimed to know the speed would be worse than not showing a speed.
 
+**The brightness reported is the effective one, not the configured one.**
+`brightness_percent` is the LED's actual brightness as a percentage of its own
+maximum, derived from the value the daemon really wrote to `brightness`. On an
+indicator whose `max_brightness` is 1 — eight of the nine on the reference board
+— 10% and 100% write the same brightness, so it reads 100% there: echoing the
+configured value back would report a number that means nothing, claiming
+"brightness 40%" for an indicator sitting at full. It is the same rule the fan's
+duty cycle already follows.
+
 ## Installation
 
 Prebuilt packages are on the
