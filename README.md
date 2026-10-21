@@ -8,9 +8,9 @@
 * 基于 LuCI 2（客户端 JavaScript），不含传统的 Lua CBI 视图。
 * 界面为英文；简体中文由单独的 `luci-i18n-ledfancontrol-zh-cn` 语言包提供。
 * 前端只负责改配置、重载服务、显示状态；真正驱动硬件的是**后端**。
-* 后端有**两个**，装哪个用哪个：原厂闭源守护进程 `factory-pwm`，以及一个
-  直接驱动内核 LED / hwmon / thermal 接口的通用后端。两者都不在时，界面会
-  明说找不到后端，而不是给一个存了也没用的表单。
+* 后端有**两个**，装哪个用哪个：原厂闭源守护进程 `factory-pwm`，以及一个直接
+  驱动内核 LED / hwmon / thermal 接口的通用后端。两者都不在时界面会明说找不到
+  后端，而不是给一个存了也没用的表单。
 
 ## 工作原理
 
@@ -24,12 +24,10 @@
 | 通用后端 | `root/usr/libexec/ledfancontrol-daemon` + `root/etc/init.d/ledfancontrol` | 驱动内核的 LED 类、hwmon 的 `pwm1`、thermal 的温区 |
 | 原厂后端 | `/usr/bin/factory-pwm`、`/etc/init.d/factory-pwm` | 驱动 RGB 的裸 PWM 通道，以及风扇的 hwmon `pwm1` + GPIO 测速脚 |
 
-前端**既不碰硬件，也不读文件系统**。它做三件事：
-
-1. 读写描述符指定的 UCI 配置；
-2. 点击「保存并应用」后提交配置：提交会触发 `reload_config`，进而触发两个 init
-   脚本各自声明的 procd 重载触发器（`service_triggers`），使改动立即生效、无需重启；
-3. 每 3 秒通过 ubus 调用 `ledfancontrol.status`，把返回的文档渲染成实时状态框。
+前端**既不碰硬件，也不读文件系统**。它只做三件事：读写描述符指定的 UCI 配置；
+在「保存并应用」时提交配置——提交触发 `reload_config`，进而触发 init 脚本声明的
+procd 重载触发器（`service_triggers`），改动立即生效、无需重启；每 3 秒通过 ubus
+调用 `ledfancontrol.status`，把返回的文档渲染成实时状态框。
 
 ### 两个后端
 
@@ -43,35 +41,25 @@
 | 转速 | 有，GPIO 测速脚 | 没有，报占空比 |
 | 传感器 | Wi-Fi 0/1/2 + CPU 最高温 | 全部 thermal zone + hwmon 温度 |
 
-**两者不会同时驱动同一路 PWM。** 原厂守护进程在装的时候拥有硬件，所以
-rpcd 插件在探测时把 `factory-pwm` 排在前面，`/etc/init.d/ledfancontrol`
-在 `start_service` 里也做同样的判断并拒绝启动。两处规则是刻意保持一致的：
-一旦它们不一致，界面和硬件就会对「谁在控制」有不同看法。
+**两者不会同时驱动同一路 PWM。** 原厂守护进程装了的时候拥有硬件，所以 rpcd 插件
+探测时把 `factory-pwm` 排在前面，`/etc/init.d/ledfancontrol` 的 `start_service` 也
+做同样的判断并拒绝启动。两处规则刻意保持一致，否则界面和硬件会对「谁在控制」有
+不同看法。
 
 ### 为什么要拆出描述符
 
 视图里**不允许**出现配置名、init 脚本名、状态文件路径、传感器键名、灯效词表、
-转速区间或过温阈值——它们全部来自 `backend.js`。换一套硬件时只需新增一个
-描述符，视图一行都不用改。
-
-`factory-pwm` 的描述符是个常量。`sysfs` 的**不是**：哪些 LED 存在、哪个是
-彩色 LED、哪个 hwmon 设备是风扇、哪些温区可读，全是主板的属性，所以它是
-在页面加载时**按设备现场构建**的（`backend.js` 里的 `buildSysfs()`），原料
-来自 rpcd 插件的 `capabilities` 方法。
-
-两个后端的**配置项名字**也不一样——原厂是 `led_mode` / `led_color` /
-`led_effect` / `fan_mode`，通用是 `mode` / `color` / `effect`（两半的模式各自
-落在自己小节里的 `mode`）。这些名字因此和上面那些一样放在描述符里
-（`ledModeKey`、`ledColorKey`、`ledEffectKey`、`brightnessKey`、
-`fanModeKey`），视图只按名字取用。曾经视图把原厂那一套写死、给两个后端共用，
-于是在通用后端的板子上「控制模式」被写进 `fan_mode`，而守护进程读的是
-`mode`——切换模式完全不起作用。
+转速区间或过温阈值——它们全部来自 `backend.js`，两个后端互不相同的配置项名字
+（原厂 `led_mode` / `led_color`，通用 `mode` / `color`）也在其中。`factory-pwm`
+的描述符是个常量，`sysfs` 的**不是**：哪些 LED 存在、哪个是彩色 LED、哪个 hwmon
+是风扇、哪些温区可读全是主板的属性，所以它在页面加载时**按设备现场构建**
+（`buildSysfs()`），原料来自 rpcd 插件的 `capabilities` 方法。
 
 通用后端的 LED 设置还多一层：它们是**按灯存的**，不是整机一份。描述符里的
-`ledKeyTemplate`（`'%s_%s'`）说明选项名由「灯名 + 普通选项名」拼成，视图据此
-把「控制模式」「手动效果」「亮度」「手动颜色」四个字段绑到当前选中的那颗灯
-上——换一颗灯，四个字段就换成那颗灯的值；保存一颗灯，其他灯的设置原样不动。
-原厂后端没有灯可选（它自己独占 PWM 通道），不带这个字段，行为与以前完全一致。
+`ledKeyTemplate`（`'%s_%s'`）说明选项名由「灯名 + 普通选项名」拼成，视图据此把
+「控制模式」「手动效果」「亮度」「手动颜色」四个字段绑到当前选中的那颗灯上——换一颗
+灯，四个字段就换成那颗灯的值；保存一颗灯，其他灯的设置原样不动。原厂后端没有灯
+可选（它自己独占 PWM 通道），不带这个字段，行为与以前完全一致。
 
 启动时由 rpcd 插件探测本机后端：
 
@@ -81,24 +69,14 @@ rpcd 插件在探测时把 `factory-pwm` 排在前面，`/etc/init.d/ledfancontr
 | 有后端，但本页没有对应的描述符 | 告知「本页版本不支持它」，**不显示**表单 |
 | 什么都没找到 | 明确告知「未找到受支持的后端」，**不显示**表单 |
 
-最后一行是刻意的：一个能保存、但保存的设置没有任何东西会去读的表单，
-比没有表单更糟，因为它看起来像是生效了。
+最后一行是刻意的：一个能保存、但保存的设置没有任何东西会去读的表单，比没有表单
+更糟，因为它看起来像是生效了。
 
 ### 为什么探测放在设备端
 
-探测、能力枚举与状态转发都在 rpcd 插件里，而不是在视图里。原因是：一个直接
-驱动内核 LED/PWM/hwmon/thermal 类的通用后端必须**枚举**它们——
-`/sys/class/thermal/thermal_zone*`、`/sys/class/hwmon/hwmon*`、
-`/sys/class/leds/*`——而不同主板的 zone 与 hwmon 编号并不相同。rpcd 的文件
-ACL 是一份写死字面路径的清单，无法表达通配，所以没有任何静态 ACL 能把
-「本机碰巧有的那些 thermal zone」授权给视图。
-
-放在插件里，无论后端最终要碰多少个文件，ACL 都只需要一条对象授权；同时视图
-彻底失去了文件系统访问权——它再也无法索取任何文件，只能索取这个对象。
-
-> **配置名说明**：原厂后端的 UCI 配置仍然叫 `factory_pwm` 而不是
-> `ledfancontrol`，因为后端二进制是按名字打开 `/etc/config/factory_pwm` 的；
-> 改名会让界面与守护进程悄悄脱钩。
+内核 LED/PWM/hwmon/thermal 的编号各主板不同，而后端必须**枚举**它们；rpcd 的文件
+ACL 是一份写死字面路径的清单，无法表达通配，所以枚举只能放在 rpcd 插件里——这样
+无论后端要碰多少个文件，ACL 都只需一条对象授权，视图也彻底拿不到文件系统访问权。
 
 ## 通用后端（sysfs）
 
@@ -110,24 +88,20 @@ ACL 是一份写死字面路径的清单，无法表达通配，所以没有任�
 * **风扇**：`/sys/class/hwmon/<n>/`——`pwm1` 与 `pwm1_enable`。
 * **温度**：`/sys/class/thermal/thermal_zone*/temp` 以及 hwmon 的 `temp*_input`。
   被驱动标为故障的通道（`temp*_fault` 非零）会被**跳过**：没接的热敏二极管读数
-  是量程顶端——NCT7802 的 2 号通道就是 127.875 °C——当真会把风扇钉死在满速。
+  是量程顶端，当真会把风扇钉死在满速。
 
 ### hwmon 按名字匹配，绝不按序号
 
 `/sys/class/hwmon/hwmonN` 的编号是**探测顺序**，同一台风扇这次开机是 `hwmon0`、
-下次可能是 `hwmon2`，任何一个驱动探测失败都会让它后面所有设备整体挪位。
-
-原厂自己的 `/etc/init.d/bootcount` 就踩了这个坑：它写死了
-`/sys/devices/platform/soc/78ba000.i2c/i2c-0/0-002f/hwmon/hwmon0/pwm1`，而那个
-i2c 设备在参考机上**根本不存在**。按驱动自报的名字匹配是唯一稳定的做法，
-所以配置里存的是名字（`pwmfan`），不是序号。
+下次可能是 `hwmon2`，任何一个驱动探测失败都会让它后面所有设备整体挪位。按驱动
+自报的名字匹配是唯一稳定的做法，所以配置里存的是名字（`pwmfan`），不是序号。
 
 ### 自动档优先交给内核
 
 如果某个温区绑定了风扇 cooling device（`/sys/class/thermal/thermal_zone*/cdev*`），
-守护进程就写 `pwm1_enable=2` 把风扇交给内核 thermal governor，自己不再插手——
-这样拿到的是内核的迟滞与分档逻辑，而不是我们重新实现的。只有在没有这种绑定时
-（参考机就是这样），才由守护进程的用户态曲线接管。
+守护进程就写 `pwm1_enable=2` 把风扇交给内核 thermal governor，自己不再插手——这样
+拿到的是内核的迟滞与分档逻辑，而不是我们重新实现的。只有在没有这种绑定时（参考机
+就是这样），才由守护进程的用户态曲线接管。
 
 曲线：`min_temp` 及以下跑 `min_pwm`，到 `max_temp` 线性升到 100%，`overtemp`
 及以上无条件满速。
@@ -178,9 +152,17 @@ config factory_fan 'fan'
 	option manual_rpm '2500'    # 手动模式下的目标转速
 ```
 
-`led_mode` 为 `auto` 时，灯效跟随 WAN 连接状态、启动阶段与固件升级阶段，
-由后端与 `/etc/hotplug.d/iface/99-factory-pwm-led`、`/etc/diag.sh` 共同驱动。
-`led_color` 只在会用到颜色的三种效果（常亮 / 闪烁 / 呼吸）下显示。
+`led_mode` 为 `auto` 时，灯效跟随 WAN 连接状态、启动阶段与固件升级阶段，由后端与
+`/etc/hotplug.d/iface/99-factory-pwm-led`、`/etc/diag.sh` 共同驱动。`led_color` 只在
+会用到颜色的三种效果（常亮 / 闪烁 / 呼吸）下显示。
+
+> 原厂后端的完整行为规格——每个配置项的取值、十种灯效、风扇温控表、状态文件与
+> Socket 协议——见
+> [`docs/reverse-engineering/factory-pwm.md`](docs/reverse-engineering/factory-pwm.md)。
+
+> **配置名说明**：原厂后端的 UCI 配置仍然叫 `factory_pwm` 而不是 `ledfancontrol`，
+> 因为后端二进制是按名字打开 `/etc/config/factory_pwm` 的；改名会让界面与守护进程
+> 悄悄脱钩。
 
 通用后端读 `/etc/config/ledfancontrol`：
 
@@ -208,15 +190,12 @@ config fan 'fan'
 	option overtemp '100'       # 应急满速
 ```
 
-`device` 默认为空：守护进程于是什么都不碰，而不是去猜用户指的是哪颗灯。
-界面会把内核实际有的名字列出来让用户选。
+`device` 默认为空：守护进程于是什么都不碰，而不是去猜用户指的是哪颗灯。界面会把
+内核实际有的名字列出来让用户选。
 
-**LED 的设置按灯存。** 选项名是「灯名 + `_` + 选项名」，灯名先做一次转写：
-把 `[A-Za-z0-9_]` 以外的字符全部换成 `_`。这一步不是美观问题——libuci 的
-名字语法只允许 `[A-Za-z0-9_]`，`blue:status_mode` 会被它以
-`Parse error (invalid character in name field)` 直接拒绝，而本机内核给出的
-每一个灯名都带冒号或连字符（`blue:status`、`green:lan-3`、`mt76-phy0`）。
-所以：
+**LED 的设置按灯存。** 选项名是「灯名 + `_` + 选项名」，灯名先做一次转写：把
+`[A-Za-z0-9_]` 以外的字符全部换成 `_`。这一步不是美观问题——libuci 的名字语法只
+允许 `[A-Za-z0-9_]`，而本机内核给出的每一个灯名都带冒号或连字符：
 
 | 灯名 | 选项前缀 |
 | --- | --- |
@@ -269,7 +248,7 @@ config fan 'fan'
 * **手动**：固定占空比，低于 `min_pwm` 会被抬高到 `min_pwm`。
 * 报的是占空比百分比，不是转速。
 
-界面上的「108 °C」「1500–4700 RPM」「40–90 °C」都来自描述符，不是写死在
+界面上的「108 °C」「1500–4700 RPM」「50–90 °C」都来自描述符，不是写死在
 文案里的常量。
 
 > **注意**：原厂的 `fan_mode` 其实没有 `off` 这个可用取值——后端虽然会解析它，

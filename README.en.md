@@ -29,14 +29,12 @@ The app has five parts:
 | Vendor backend | `/usr/bin/factory-pwm`, `/etc/init.d/factory-pwm` | Drives the RGB LED's raw PWM channels and the fan's hwmon `pwm1` plus GPIO tachometer |
 
 The frontend **never touches the hardware**, and it does not read the
-filesystem either. It does three things:
-
-1. reads and writes the UCI configuration named by the descriptor;
-2. on *Save & Apply*, commits it, which runs `reload_config` and so fires the
-   procd reload trigger each init script declares (`service_triggers`), making
-   the change take effect without a reboot;
-3. every 3 seconds calls `ledfancontrol.status` over ubus and renders the
-   document that comes back.
+filesystem either. It does three things: reads and writes the UCI configuration
+named by the descriptor; on *Save & Apply* commits it, which runs
+`reload_config` and so fires the procd reload trigger each init script declares
+(`service_triggers`), making the change take effect without a reboot; and every
+3 seconds calls `ledfancontrol.status` over ubus and renders the document that
+comes back.
 
 ### The two backends
 
@@ -61,23 +59,13 @@ have different ideas about who is in charge.
 
 The view is **not allowed** to name the config, the init script, the status
 source, the sensor keys, the effect vocabulary, the speed range or the
-over-temperature trip point — all of it comes from `backend.js`. Adding a third
-backend therefore means adding a descriptor, not editing the view.
-
-`factory-pwm`'s descriptor is a constant. `sysfs`'s is **not**: which LEDs
-exist, whether one of them can mix colours, which hwmon device is the fan and
-which thermal zones are readable are all properties of the board, so it is
-*built* per device at page load (`buildSysfs()` in `backend.js`), out of the
-rpcd plugin's `capabilities` method.
-
-The two backends **do not even agree on what their options are called**. The
-vendor's are `led_mode` / `led_color` / `led_effect` / `fan_mode`; the generic
-one's are `mode` / `color` / `effect`, with each half's mode landing in `mode`
-inside its own section. Those names therefore live in the descriptor too
-(`ledModeKey`, `ledColorKey`, `ledEffectKey`, `brightnessKey`, `fanModeKey`),
-and the view only looks them up. It used to spell the vendor's set out for both
-backends, so on a sysfs board the mode selector wrote `fan_mode` while the
-daemon read `mode` — and choosing a mode did nothing at all.
+over-temperature trip point — all of it comes from `backend.js`, and so do the
+two backends' differing option names (the vendor's `led_mode` / `led_color`, the
+generic one's `mode` / `color`). `factory-pwm`'s descriptor is a constant,
+`sysfs`'s is **not**: which LEDs exist, whether one of them can mix colours,
+which hwmon device is the fan and which thermal zones are readable are all
+properties of the board, so it is *built* per device at page load
+(`buildSysfs()` in `backend.js`), out of the rpcd plugin's `capabilities` method.
 
 The generic backend's LED settings go one step further: they are stored **per
 LED**, not once for the board. The descriptor's `ledKeyTemplate` (`'%s_%s'`)
@@ -101,23 +89,11 @@ worse than no form, because it looks like it worked.
 
 ### Why the probe lives on the device
 
-The probe, the capability enumeration and the status relay sit in an rpcd plugin
-rather than in the view, because a backend that drives the kernel's own
-LED/PWM/hwmon/thermal classes has to *enumerate* them —
-`/sys/class/thermal/thermal_zone*`, `/sys/class/hwmon/hwmon*`,
-`/sys/class/leds/*` — and the zone and hwmon indices differ from board to board.
-rpcd's file ACL is a fixed list of literal paths and cannot express a glob, so no
-static ACL could grant the view access to "whatever thermal zones this board
-happens to have".
-
-Doing it in the plugin keeps the ACL to a single object grant no matter how many
-files a backend ends up touching, and it removes the page's filesystem access
-entirely: the page can no longer ask for a file at all, only for this object.
-
-> **About the configuration name**: the vendor backend's UCI configuration is
-> still called `factory_pwm` rather than `ledfancontrol`, because the backend
-> binary opens `/etc/config/factory_pwm` by name. Renaming it would silently
-> detach the UI from the daemon.
+The kernel's LED/PWM/hwmon/thermal indices differ from board to board, and a
+backend has to *enumerate* them. rpcd's file ACL is a fixed list of literal
+paths and cannot express a glob, so the enumeration has to live in the rpcd
+plugin — which keeps the ACL to a single object grant no matter how many files a
+backend ends up touching, and removes the page's filesystem access entirely.
 
 ## The generic (sysfs) backend
 
@@ -131,21 +107,16 @@ engine of its own:
 * **Fan**: `/sys/class/hwmon/<n>/` — `pwm1` and `pwm1_enable`.
 * **Thermal**: `/sys/class/thermal/thermal_zone*/temp` and hwmon `temp*_input`.
   Channels the driver has flagged as faulty (`temp*_fault` non-zero) are
-  **skipped**: an unconnected thermal diode reads the top of its range — the
-  NCT7802's second channel reads 127.875 °C — and taken at face value that pins
-  the fan at full speed.
+  **skipped**: an unconnected thermal diode reads the top of its range, and
+  taken at face value that pins the fan at full speed.
 
 ### hwmon devices are matched by name, never by index
 
 `/sys/class/hwmon/hwmonN` is numbered in **probe order**: the same fan is
 `hwmon0` on one boot and `hwmon2` on the next, and a single driver failing to
-probe shifts every later device by one.
-
-The vendor's own `/etc/init.d/bootcount` walks into exactly this trap — it
-hardcodes `/sys/devices/platform/soc/78ba000.i2c/i2c-0/0-002f/hwmon/hwmon0/pwm1`,
-a path that does not exist on the reference board at all. Matching on the name
-the driver reports is the only stable handle, so the configuration stores the
-name (`pwmfan`) rather than an index.
+probe shifts every later device by one. Matching on the name the driver reports
+is the only stable handle, so the configuration stores the name (`pwmfan`)
+rather than an index.
 
 ### Automatic mode prefers the kernel
 
@@ -219,6 +190,16 @@ phases and the firmware upgrade phases, driven by the backend together with
 only shown for the three effects that actually use a colour (solid on,
 blinking, breathing).
 
+> The vendor backend's full behaviour specification — every option's values, the
+> ten effects, the fan's thermal table, the status file and the socket protocol
+> — is in
+> [`docs/reverse-engineering/factory-pwm.md`](docs/reverse-engineering/factory-pwm.md).
+
+> **About the configuration name**: the vendor backend's UCI configuration is
+> still called `factory_pwm` rather than `ledfancontrol`, because the backend
+> binary opens `/etc/config/factory_pwm` by name. Renaming it would silently
+> detach the UI from the daemon.
+
 The generic backend reads `/etc/config/ledfancontrol`:
 
 ```uci
@@ -251,11 +232,9 @@ user to choose from.
 
 **The LED settings are stored per LED.** An option name is the LED's name plus
 `_` plus the plain option name, and the LED name is transliterated first: every
-character outside `[A-Za-z0-9_]` becomes `_`. That step is not cosmetic — libuci's
-name grammar allows only `[A-Za-z0-9_]`, and it answers `blue:status_mode` with
-`Parse error (invalid character in name field)`, while every name the kernel
-publishes on the reference board has a colon or a hyphen in it (`blue:status`,
-`green:lan-3`, `mt76-phy0`). So:
+character outside `[A-Za-z0-9_]` becomes `_`. That step is not cosmetic —
+libuci's name grammar allows only `[A-Za-z0-9_]`, and every name the kernel
+publishes on the reference board has a colon or a hyphen in it:
 
 | LED name | option prefix |
 | --- | --- |
@@ -315,7 +294,7 @@ Generic backend:
 * **Manual**: a fixed duty cycle, raised to `min_pwm` if set below it.
 * Reports a duty cycle percentage, not a speed.
 
-The "108 °C", "1500–4700 RPM" and "40–90 °C" on the page come from the
+The "108 °C", "1500–4700 RPM" and "50–90 °C" on the page come from the
 descriptor rather than being constants written into the labels.
 
 > **Note**: the vendor's `fan_mode` has no usable `off` — the backend parses it
