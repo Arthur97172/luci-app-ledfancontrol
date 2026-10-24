@@ -12,6 +12,40 @@
   驱动内核 LED / hwmon / thermal 接口的通用后端。两者都不在时界面会明说找不到
   后端，而不是给一个存了也没用的表单。
 
+## 安装
+
+预编译包见 [Releases](https://github.com/Arthur97172/luci-app-ledfancontrol/releases)。
+
+OpenWrt 24.10：
+
+```sh
+opkg install luci-app-ledfancontrol_*.ipk
+# 中文界面需额外安装翻译包
+opkg install luci-i18n-ledfancontrol-zh-cn_*.ipk
+```
+
+OpenWrt 25.12：
+
+```sh
+apk add --allow-untrusted luci-app-ledfancontrol-*.apk
+# 中文界面需额外安装翻译包
+apk add --allow-untrusted luci-i18n-ledfancontrol-zh-cn-*.apk
+```
+
+### 从源码编译
+
+```sh
+cd openwrt
+./scripts/feeds update -a
+./scripts/feeds install -a
+git clone https://github.com/Arthur97172/luci-app-ledfancontrol.git package/luci-app-ledfancontrol
+make menuconfig   # LuCI → Applications → luci-app-ledfancontrol
+make package/luci-app-ledfancontrol/compile V=s
+```
+
+会同时产出 `luci-app-ledfancontrol` 与 `luci-i18n-ledfancontrol-zh-cn` 两个包。
+同时支持 `.ipk`（opkg）与 `.apk`（apk-openssl，OpenWrt 25.12+）。
+
 ## 工作原理
 
 本应用由五层组成：
@@ -292,38 +326,6 @@ config fan 'fan'
 100% 写下去是同一个亮度，所以那里会报 100%——把配置值原样回显只会显示一个没有
 意义的数字，界面会声称一颗满亮的指示灯「亮度 40%」。这与风扇报实际写入的占空比
 是同一条规则。
-
-## 安装
-
-预编译包见 [Releases](https://github.com/Arthur97172/luci-app-ledfancontrol/releases)。
-
-OpenWrt 24.10：
-
-```sh
-opkg install luci-app-ledfancontrol_*.ipk
-# 中文界面需额外安装翻译包
-opkg install luci-i18n-ledfancontrol-zh-cn_*.ipk
-```
-
-OpenWrt 25.12：
-
-```sh
-apk add --allow-untrusted luci-app-ledfancontrol-*.apk
-# 中文界面需额外安装翻译包
-apk add --allow-untrusted luci-i18n-ledfancontrol-zh-cn-*.apk
-```
-
-## 编译
-
-放进 OpenWrt 源码树或 SDK 的 `package/` 目录下（例如
-`package/luci-app-ledfancontrol`），然后：
-
-```sh
-make package/luci-app-ledfancontrol/compile V=s
-```
-
-会同时产出 `luci-app-ledfancontrol` 与 `luci-i18n-ledfancontrol-zh-cn` 两个包。
-同时支持 `.ipk`（opkg）与 `.apk`（apk-openssl，OpenWrt 25.12+）。
 
 ## 许可
 

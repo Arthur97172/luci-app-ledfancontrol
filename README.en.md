@@ -16,6 +16,42 @@ the **cooling fan** from a single page under the *System* menu.
   kernel's own LED, hwmon and thermal interfaces. With neither present the page
   says so, rather than offering a form that saves nothing.
 
+## Installation
+
+Prebuilt packages are on the
+[Releases](https://github.com/Arthur97172/luci-app-ledfancontrol/releases) page.
+
+OpenWrt 24.10:
+
+```sh
+opkg install luci-app-ledfancontrol_*.ipk
+# the Chinese interface needs the translation package as well
+opkg install luci-i18n-ledfancontrol-zh-cn_*.ipk
+```
+
+OpenWrt 25.12:
+
+```sh
+apk add --allow-untrusted luci-app-ledfancontrol-*.apk
+# the Chinese interface needs the translation package as well
+apk add --allow-untrusted luci-i18n-ledfancontrol-zh-cn-*.apk
+```
+
+### Building from source
+
+```sh
+cd openwrt
+./scripts/feeds update -a
+./scripts/feeds install -a
+git clone https://github.com/Arthur97172/luci-app-ledfancontrol.git package/luci-app-ledfancontrol
+make menuconfig   # LuCI → Applications → luci-app-ledfancontrol
+make package/luci-app-ledfancontrol/compile V=s
+```
+
+This produces both `luci-app-ledfancontrol` and
+`luci-i18n-ledfancontrol-zh-cn`. Both `.ipk` (opkg) and `.apk`
+(apk-openssl, OpenWrt 25.12+) are supported.
+
 ## How it works
 
 The app has five parts:
@@ -345,40 +381,6 @@ indicator whose `max_brightness` is 1 — eight of the nine on the reference boa
 configured value back would report a number that means nothing, claiming
 "brightness 40%" for an indicator sitting at full. It is the same rule the fan's
 duty cycle already follows.
-
-## Installation
-
-Prebuilt packages are on the
-[Releases](https://github.com/Arthur97172/luci-app-ledfancontrol/releases) page.
-
-OpenWrt 24.10:
-
-```sh
-opkg install luci-app-ledfancontrol_*.ipk
-# the Chinese interface needs the translation package as well
-opkg install luci-i18n-ledfancontrol-zh-cn_*.ipk
-```
-
-OpenWrt 25.12:
-
-```sh
-apk add --allow-untrusted luci-app-ledfancontrol-*.apk
-# the Chinese interface needs the translation package as well
-apk add --allow-untrusted luci-i18n-ledfancontrol-zh-cn-*.apk
-```
-
-## Building
-
-Drop the directory into the `package/` tree of an OpenWrt source tree or SDK
-(for example `package/luci-app-ledfancontrol`), then:
-
-```sh
-make package/luci-app-ledfancontrol/compile V=s
-```
-
-This produces both `luci-app-ledfancontrol` and
-`luci-i18n-ledfancontrol-zh-cn`. Both `.ipk` (opkg) and `.apk`
-(apk-openssl, OpenWrt 25.12+) are supported.
 
 ## License
 
