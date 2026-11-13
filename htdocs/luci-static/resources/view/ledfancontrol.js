@@ -155,6 +155,32 @@ function hasFan(desc) {
  * descriptor for, which is a page older than the hardware, and the answer to
  * that is to update the app.
  */
+/*
+ * Give each section's last row the same gap at the bottom that the theme puts
+ * between the rows.
+ *
+ * Argon - both the 2.x line and the 3.x rewrite - draws a CBI section as a card
+ * whose heading carries its own inset (1rem by default), while .cbi-section-node
+ * spaces the value rows with a flex gap and has no padding of its own. The
+ * section therefore ends at the bottom edge of its last row, and the card looks
+ * clipped; the heading's inset above has no counterpart below. Argon solves
+ * this for its own pages by padding the node, so the same line does the same
+ * thing here.
+ *
+ * var(--field-gap, 1rem) reads Argon 3's own spacing variable where it exists,
+ * so the new space tracks that theme's rhythm, and falls back to 1rem for Argon
+ * 2.x and the other card themes, which use that value literally. The selector
+ * stops at this page's map, so no other page is affected, and it matches both
+ * sections - the fan card has exactly the same bottom edge.
+ */
+function addSectionSpacing() {
+	if (document.getElementById('ledfancontrol-spacing'))
+		return;
+
+	document.head.appendChild(E('style', { 'id': 'ledfancontrol-spacing' },
+		'.cbi-map > .cbi-section > .cbi-section-node { padding-bottom: var(--field-gap, 1rem); }'));
+}
+
 function renderUnsupported(available) {
 	var found = (available && available.length) ? available.join('", "') : null;
 
@@ -440,6 +466,8 @@ return view.extend({
 
 		if (!desc.config)
 			return renderUnsupported(det.available);
+
+		addSectionSpacing();
 
 		m = new form.Map(desc.config, _('LED & Fan Control'),
 			_('Unified control of the RGB PWM lighting and of the fan thermal control. A change takes effect as soon as it is saved and applied.'));
