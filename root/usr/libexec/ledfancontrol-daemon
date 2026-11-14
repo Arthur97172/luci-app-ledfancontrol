@@ -315,6 +315,14 @@ max_temp_c() {
 		for f in "$d"/temp*_input; do
 			[ -r "$f" ] || continue
 
+			# Only channels that answered the startup probe. One that did
+			# not would put the kernel back into the 10-17 s wait described
+			# in probe_temp_channels(), and stall the whole radio with it.
+			case "$TEMP_CHANNELS" in
+				*"$f"*) ;;
+				*) continue ;;
+			esac
+
 			# temp2_input -> temp2, so the channel's own fault flag can be
 			# read alongside its reading.
 			chan="${f##*/}"
@@ -334,6 +342,56 @@ max_temp_c() {
 	done
 
 	printf '%s\n' "${max:-0}"
+}
+
+# Fill TEMP_CHANNELS with the temp*_input files that answer promptly.
+#
+# Not every hwmon channel does. ath12k registers one hwmon per radio link, and
+# on a link whose firmware does not come up the temperature read is carried by
+# a WMI command that goes unanswered: the read blocks for 10-17 s and only
+# then fails. The damage is not confined to this daemon. While that command is
+# pending every other query on the same radio queues behind it, so iwinfo -
+# and with it LuCI's status page, which asks every radio for its station list
+# - freezes for the same 10-17 s.
+#
+# A blocking sysfs read cannot be cancelled from userspace; the process sits
+# in D state until the kernel returns. The only cure is not to issue it more
+# than once. So every channel is read once here, in parallel, and given two
+# seconds. Channels still blocked when the grace period runs out are dropped,
+# and max_temp_c() never touches them again. Healthy sensors cost one parallel
+# read at startup; a broken one costs a single stall per boot instead of one
+# every INTERVAL seconds.
+probe_temp_channels() {
+	local d f num=0
+
+	PROBE_DIR="/tmp/.ledfancontrol-probe.$$"
+	mkdir -p "$PROBE_DIR" || return 0
+
+	for d in "$HWMON_ROOT"/hwmon*; do
+		for f in "$d"/temp*_input; do
+			[ -r "$f" ] || continue
+			num=$(( num + 1 ))
+			cat "$f" > "$PROBE_DIR/$num.out" 2>/dev/null &
+			printf '%s %s %s\n' "$num" "$f" "$!" >> "$PROBE_DIR/index"
+		done
+	done
+
+	sleep 2
+
+	TEMP_CHANNELS=''
+	while read -r num f pid; do
+		# Still running after two seconds: the read is stuck in the driver.
+		# Leave it to finish on its own; do not wait for it.
+		kill -0 "$pid" 2>/dev/null && continue
+		wait "$pid" 2>/dev/null
+		case "$(cat "$PROBE_DIR/$num.out" 2>/dev/null)" in
+			''|*[!0-9-]*) continue ;;
+		esac
+		TEMP_CHANNELS="$TEMP_CHANNELS$f
+"
+	done < "$PROBE_DIR/index"
+
+	rm -rf "$PROBE_DIR"
 }
 
 # The automatic curve, in percent. Flat at min_pwm up to min_temp, linear from
@@ -411,6 +469,10 @@ hottest=0
 thermal_state=0
 
 apply_led
+
+# Which hwmon temperature channels answer, decided once before the loop.
+TEMP_CHANNELS=''
+probe_temp_channels
 
 FAN_DIR="$(fan_dir)" || FAN_DIR=''
 
