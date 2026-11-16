@@ -213,6 +213,7 @@ function renderUnsupported(available) {
 var ledState = {
 	device: '',
 	deviceOpt: null,
+	map: null,
 	options: []
 };
 
@@ -337,6 +338,41 @@ function ledShow(desc, sid, entry) {
 }
 
 /*
+ * Put the current LED's settings on screen and let CBI redraw the rows that
+ * depend on them.
+ *
+ * The second half is not optional. CBI decides which depends() rows are
+ * visible in checkDepends(), which it runs from a `widget-change` event that
+ * the widgets raise from their own change listeners - and ledShow() calls
+ * setValue(), which raises nothing. The map does run checkDepends once on the
+ * dropdown's change, but that happens before the onchange handler below has
+ * moved the mode and effect fields to the new LED's values, so it judges them
+ * by the old LED's settings. The visible result was a control mode reading
+ * "manual" while the manual-effect row stayed hidden, until the mode was
+ * changed by hand and the event fired for real.
+ *
+ * Calling the map's checkDepends() runs that same pass on the values now in
+ * the widgets: it compares each option's current visibility with what its
+ * depends() asks for and toggles the rows that disagree.
+ *
+ * It has to be the map's, not the section's. One section pass walks the options
+ * in order and judges each by the visibility of the options it depends on, so a
+ * row that is itself being switched on in the same pass still counts as hidden
+ * to the rows below it - the manual-colour row depends on both the mode and the
+ * effect row, and the effect row precedes it, so a single pass left the colour
+ * hidden under a visible effect. The map's version repeats the pass until no
+ * row changes, and updates any tab visibility with the result.
+ */
+function ledRefresh(desc, sid) {
+	ledState.options.forEach(function(entry) {
+		ledShow(desc, sid, entry);
+	});
+
+	if (ledState.options.length)
+		ledState.map.checkDepends();
+}
+
+/*
  * Move the four settings fields from one LED to another.
  *
  * Anything edited but not yet saved is first written into the changeset under
@@ -367,9 +403,7 @@ function ledSwitch(desc, sid, device) {
 
 	ledState.device = device || '';
 
-	ledState.options.forEach(function(entry) {
-		ledShow(desc, sid, entry);
-	});
+	ledRefresh(desc, sid);
 }
 
 /*
@@ -438,6 +472,7 @@ return view.extend({
 
 		ledState.device = '';
 		ledState.deviceOpt = null;
+		ledState.map = null;
 		ledState.options = [];
 
 		return backend.detect().then(function(det) {
@@ -471,6 +506,10 @@ return view.extend({
 
 		m = new form.Map(desc.config, _('LED & Fan Control'),
 			_('Unified control of the RGB PWM lighting and of the fan thermal control. A change takes effect as soon as it is saved and applied.'));
+
+		/* Kept for ledRefresh(), which asks the map to re-run the dependency
+		 * pass after it has moved the LED fields to another LED. */
+		ledState.map = m;
 
 		/*
 		 * The live status box is not a CBI section: it renders data the daemon
@@ -760,14 +799,13 @@ return view.extend({
 			 * already did this from the values load() read, but load() ran
 			 * against the device named in the configuration, which is the value
 			 * just replaced - and drawing leaves a field blank when the stored
-			 * value is not one the option offers. Both are corrected here.
+			 * value is not one the option offers. Both are corrected here, and
+			 * the dependency rows follow - see ledRefresh().
 			 *
 			 * It also records what each field settled on; ledSwitch() compares
 			 * against that to tell an edit from an untouched field.
 			 */
-			ledState.options.forEach(function(entry) {
-				ledShow(desc, 'led', entry);
-			});
+			ledRefresh(desc, 'led');
 
 			L.Poll.add(function() {
 				return backend.status().then(function(st) {
