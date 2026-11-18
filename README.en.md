@@ -80,7 +80,7 @@ comes back.
 | Configuration | `/etc/config/factory_pwm` | `/etc/config/ledfancontrol` |
 | Lighting | writes the duty cycle of `/sys/class/pwm/pwmchip0/pwm{0,1,2}` directly | the kernel LED class: `trigger` / `brightness` / `multi_intensity` |
 | Effects | ten, including breathing, rainbow and the factory red/blue alternation | solid on, blinking (the kernel `timer` trigger) |
-| Fan | the vendor's 11-state multi-sensor thermal table | a linear curve with configurable endpoints, or the kernel's own governor where a cooling map is bound |
+| Fan | the vendor's 11-state multi-sensor thermal table | a linear curve with configurable endpoints; a kernel cooling map only acts as a backstop |
 | Speed | yes, from a GPIO tachometer | no; duty cycle is reported instead |
 | Sensors | Wi-Fi 0/1/2 and the CPU maximum | every thermal zone plus hwmon temperatures |
 
@@ -154,14 +154,26 @@ probe shifts every later device by one. Matching on the name the driver reports
 is the only stable handle, so the configuration stores the name (`pwmfan`)
 rather than an index.
 
-### Automatic mode prefers the kernel
+### Automatic mode is driven here, with the kernel as a backstop
 
-If some thermal zone binds a fan cooling device
-(`/sys/class/thermal/thermal_zone*/cdev*`), the daemon writes `pwm1_enable=2`
-and hands the fan to the kernel's thermal governor, then stops touching it. That
-gets the kernel's hysteresis and step logic rather than a reimplementation of
-it. Only where there is no such binding — which is the case on the reference
-board — does the daemon's userspace curve take over.
+Earlier versions handed the fan to the kernel's thermal governor as soon as some
+thermal zone bound it as a cooling device
+(`/sys/class/thermal/thermal_zone*/cdev*`): the daemon wrote `pwm1_enable=2` and
+stopped touching `pwm1`. That was wrong. The values of `pwm1_enable` only select
+the power state of the PWM and of the regulator (0–3 are their on/off
+combinations); they are not a userspace-versus-kernel ownership switch, and the
+governor never consults them. The result was a daemon that had stepped aside
+while the fan followed the kernel's cooling levels, with the page's "minimum
+speed in automatic mode" and the curve endpoints silently doing nothing.
+
+The automatic mode is now driven by the userspace curve. The kernel's cooling
+map still stays as a backstop: it is not bound by `pwm1_enable` and will still
+write `pwm1` when a thermal zone crosses a trip point, so the daemon reads
+`pwm1` back every cycle and rewrites its own value if it finds it changed. A
+board that would rather let the kernel own the fan can set
+`option kernel_governor '1'` in `/etc/config/ledfancontrol`, in which case the
+daemon only reports. The status document's `fan_owner` field says who is driving
+the fan (`daemon`, `kernel` or `none`).
 
 The curve runs at `min_pwm` up to `min_temp`, rises linearly to 100% at
 `max_temp`, and is pinned to 100% at or above `overtemp`.
@@ -325,8 +337,8 @@ Vendor backend:
 
 Generic backend:
 
-* **Automatic**: a linear curve; where a cooling map is bound, `pwm1_enable=2`
-  hands the fan to the kernel instead.
+* **Automatic**: a linear curve, driven by the daemon (a kernel cooling map is
+  only a backstop).
 * **Manual**: a fixed duty cycle, raised to `min_pwm` if set below it.
 * Reports a duty cycle percentage, not a speed.
 

@@ -32,12 +32,15 @@
 # that does not exist on that board at all. Matching on the name the driver
 # reports is the only stable way.
 #
-# Second, the fan's automatic mode prefers the kernel. If any thermal zone binds
-# a fan cooling device, pwm1_enable=2 hands the fan to the kernel's thermal
-# governor and this daemon stops touching it. Only when there is no such binding
-# - which is the case on the reference board - does the userspace curve below
-# take over. Boards that are set up correctly in device tree therefore get the
-# kernel's own hysteresis and step logic instead of ours.
+# Second, the fan's automatic mode is driven from here, not by the kernel, even
+# on a board whose thermal zone binds this fan as a cooling device. The curve
+# and its minimum are what the page configures, so they have to be what runs;
+# handing the fan to the thermal governor would silently make those settings do
+# nothing. The governor is not switched off either - it keeps reacting when a
+# trip point is crossed - so the daemon reads pwm1 back every cycle and writes
+# its own value again if the governor moved it. A board that really wants the
+# kernel in charge can say so with `option kernel_governor '1'` in
+# /etc/config/ledfancontrol (see README.md).
 
 . /lib/functions.sh
 
@@ -104,6 +107,7 @@ config_get fan_man_pwm  fan manual_pwm '60'
 config_get fan_min_temp fan min_temp   '50'
 config_get fan_max_temp fan max_temp   '90'
 config_get fan_overtemp fan overtemp   '100'
+config_get fan_kernel_governor fan kernel_governor '0'
 
 # ---------------------------------------------------------------------------
 # LED
@@ -430,6 +434,7 @@ write_status() {
 		printf '\t"led_mode": "%s",\n' "$led_mode"
 		printf '\t"brightness_percent": %s,\n' "$led_bright_pct"
 		printf '\t"fan_mode": "%s",\n' "$fan_mode"
+		printf '\t"fan_owner": "%s",\n' "$fan_owner"
 		printf '\t"target_pwm": %s,\n' "$target_pwm"
 		printf '\t"fan_pwm_0_255": %s,\n' "$pwm255"
 		printf '\t"thermal_state": %s,\n' "$thermal_state"
@@ -476,13 +481,19 @@ probe_temp_channels
 
 FAN_DIR="$(fan_dir)" || FAN_DIR=''
 
+fan_owner='none'
+
 if [ -n "$FAN_DIR" ]; then
-	if [ "$fan_mode" = 'auto' ] && kernel_auto_available; then
-		# The kernel owns the fan from here; this daemon only reports on it.
+	if [ "$fan_mode" = 'auto' ] && [ "$fan_kernel_governor" = '1' ] && kernel_auto_available; then
+		# Explicitly configured to let the kernel own the fan; this daemon only
+		# reports on it. Off by default: the page's curve and minimum would
+		# otherwise be promised and silently ignored.
 		FAN_KERNEL=1
+		fan_owner='kernel'
 		echo 2 > "$FAN_DIR/pwm1_enable" 2>/dev/null
 	else
 		FAN_KERNEL=0
+		fan_owner='daemon'
 		echo 1 > "$FAN_DIR/pwm1_enable" 2>/dev/null
 	fi
 else
@@ -510,10 +521,20 @@ while :; do
 
 		pwm255=$(( target_pwm * 255 / 100 ))
 
-		# Only touch the hardware when the target actually moved.
+		# Write when the target moved. When it has not, read pwm1 back before
+		# trusting it: a thermal zone that binds this fan as a cooling device
+		# lets the kernel's governor write pwm1 at a trip point regardless of
+		# who set it, and comparing only against last_pwm255 would leave the
+		# fan at the governor's duty until the target happened to change.
 		if [ "$pwm255" != "$last_pwm255" ]; then
 			echo "$pwm255" > "$FAN_DIR/pwm1" 2>/dev/null
 			last_pwm255="$pwm255"
+		else
+			cur="$(cat "$FAN_DIR/pwm1" 2>/dev/null)"
+			case "$cur" in ''|*[!0-9]*) cur="$pwm255" ;; esac
+			if [ "$cur" != "$pwm255" ]; then
+				echo "$pwm255" > "$FAN_DIR/pwm1" 2>/dev/null
+			fi
 		fi
 	elif [ -n "$FAN_DIR" ]; then
 		# The kernel is driving it; report what it settled on.

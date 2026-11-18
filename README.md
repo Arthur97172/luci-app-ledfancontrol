@@ -71,7 +71,7 @@ procd 重载触发器（`service_triggers`），改动立即生效、无需重�
 | 配置 | `/etc/config/factory_pwm` | `/etc/config/ledfancontrol` |
 | 灯 | 裸写 `/sys/class/pwm/pwmchip0/pwm{0,1,2}` 的占空比 | 内核 LED 类：`trigger` / `brightness` / `multi_intensity` |
 | 灯效 | 10 种，含呼吸、彩虹、原厂红蓝交替 | 常亮、闪烁（内核 `timer` 触发器） |
-| 风扇 | 原厂 11 档多传感器温控表 | 线性曲线，端点可配；若内核已绑定 cooling map 则交给内核 |
+| 风扇 | 原厂 11 档多传感器温控表 | 线性曲线，端点可配；内核 cooling map 只作兜底 |
 | 转速 | 有，GPIO 测速脚 | 没有，报占空比 |
 | 传感器 | Wi-Fi 0/1/2 + CPU 最高温 | 全部 thermal zone + hwmon 温度 |
 
@@ -130,12 +130,21 @@ ACL 是一份写死字面路径的清单，无法表达通配，所以枚举只�
 下次可能是 `hwmon2`，任何一个驱动探测失败都会让它后面所有设备整体挪位。按驱动
 自报的名字匹配是唯一稳定的做法，所以配置里存的是名字（`pwmfan`），不是序号。
 
-### 自动档优先交给内核
+### 自动档由守护进程驱动，内核只做兜底
 
-如果某个温区绑定了风扇 cooling device（`/sys/class/thermal/thermal_zone*/cdev*`），
-守护进程就写 `pwm1_enable=2` 把风扇交给内核 thermal governor，自己不再插手——这样
-拿到的是内核的迟滞与分档逻辑，而不是我们重新实现的。只有在没有这种绑定时（参考机
-就是这样），才由守护进程的用户态曲线接管。
+早期版本里，只要某个温区绑定了风扇 cooling device（`/sys/class/thermal/thermal_zone*/cdev*`），
+守护进程就写 `pwm1_enable=2`、把风扇交给内核 thermal governor 并停止写 `pwm1`。
+这个判断是错的：`pwm1_enable` 的取值只决定 PWM 与稳压器的电源状态（0–3 是两者的
+开合组合），不是「用户态 / 内核」的控制权开关，内核 governor 也从不检查它。结果
+是守护进程自己停手、风扇按内核的冷却档位走，而页面上的「自动模式最低转速」和曲线
+端点全部不起作用，界面还没有任何提示。
+
+现在自动档一律由用户态曲线驱动。内核的 cooling map 仍保留作兜底：它不受
+`pwm1_enable` 约束，温区越过 trip 点时仍会写 `pwm1`，所以守护进程每轮都读回
+`pwm1`，发现自己写的值被改掉就再写一次。若某块板子确实更愿意让内核全权控制，
+可在 `/etc/config/ledfancontrol` 里设 `option kernel_governor '1'`，此时守护进程
+只报告、不写 `pwm1`。状态文档的 `fan_owner` 字段说明当前是谁在驱动风扇
+（`daemon` / `kernel` / `none`）。
 
 曲线：`min_temp` 及以下跑 `min_pwm`，到 `max_temp` 线性升到 100%，`overtemp`
 及以上无条件满速。
@@ -278,7 +287,7 @@ config fan 'fan'
 
 通用后端：
 
-* **自动**：线性曲线；若内核已绑定 cooling map 则改用 `pwm1_enable=2` 交给内核。
+* **自动**：线性曲线（由守护进程写 `pwm1`；内核 cooling map 只作兜底）。
 * **手动**：固定占空比，低于 `min_pwm` 会被抬高到 `min_pwm`。
 * 报的是占空比百分比，不是转速。
 
